@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dog Skin Disease Detector</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+<body>
+    <header class="app-header">
+        <div class="container header-inner">
+            <div class="header-left">
+                <h1>Dog Skin Disease Detector</h1>
+            </div>
+            <div class="header-right">
+                <div class="badge">
+                    <span class="badge-dot"></span>
+                    Runs in your browser (dashboard retention)
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="container main-grid">
+        <section class="card twin-card">
+            <div class="card-title">
+                <h2>Digital Twin Profile (Healthy)</h2>
+                <p class="card-subtitle">Healthy reference look & baseline parameters (display only)</p>
+            </div>
+
+            <div class="twin-photos" aria-label="Healthy dog photos">
+                <img class="twin-photo" alt="Healthy dog 1"
+                     src="https://images.unsplash.com/photo-1518717758536-85ae29035b6d?auto=format&fit=crop&w=420&q=60" />
+                
+            </div>
+
+            <div class="baseline-params">
+                <div class="digital-twin-row"><span class="label">Dog profile id</span><span class="value">default</span></div>
+                <div class="digital-twin-row"><span class="label">Healthy Mean Probability</span><span class="value">0.500000</span></div>
+                <div class="digital-twin-row"><span class="label">Healthy Std (derived)</span><span class="value">0.000000</span></div>
+                <div class="digital-twin-row"><span class="label">Healthy Threshold</span><span class="value">0.500000</span></div>
+                <div class="digital-twin-row"><span class="label">Healthy Prob M2</span><span class="value">0.000000</span></div>
+                <div class="digital-twin-row"><span class="label">Updated at</span><span class="value">-</span></div>
+            </div>
+
+            <div class="tip">
+                Tip: Enter a different <b>Dog ID</b> if you want the dashboard to group predictions by dog.
+            </div>
+        </section>
+
+        <section class="card actions-card">
+            <div class="card-title">
+                <h2>Predict</h2>
+                <p class="card-subtitle">Upload an image or a video. We will classify each frame every 1 second.</p>
+            </div>
+
+            <div class="dog-id-row">
+                <label for="dogIdInput" class="field-label">Dog ID (optional)</label>
+                <input type="text" id="dogIdInput" class="text-input" placeholder="e.g. Dog001">
+            </div>
+
+            <div class="actions-grid">
+                <div class="card mini-card">
+                    <div class="mini-title">
+                        <h3>Image Analysis</h3>
+                    </div>
+                    <div class="upload-box">
+                        <input type="file" id="fileInput" accept="image/*">
+                        <button class="primary-btn" onclick="uploadImage()">Analyze Image</button>
+                    </div>
+                    <div id="predictionResult" class="result-area"></div>
+                </div>
+
+                <div class="card mini-card">
+                    <div class="mini-title">
+                        <h3>Video Analysis</h3>
+                    </div>
+                    <div class="upload-box">
+                        <input type="file" id="videoInput" accept="video/*">
+                        <button class="primary-btn" onclick="uploadVideo()">Analyze Video</button>
+                    </div>
+                    <div id="videoPredictionResult" class="result-area"></div>
+                    <div id="videoDownloadArea" class="result-area"></div>
+                    <div id="unhealthyFrameGallery" class="unhealthy-gallery result-area"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <section class="container card dashboard-card">
+        <div class="dashboard-head">
+            <div>
+                <h2>Prediction Dashboard</h2>
+                <p class="card-subtitle">Detected dogs and their latest statuses are retained in this browser.</p>
+            </div>
+            <div class="dashboard-actions">
+                <button class="secondary-btn" onclick="clearPredictionHistory()">Clear History</button>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card doglist-card">
+                <div class="doglist-title">
+                    <h3>Detected Dogs (Latest Status)</h3>
+                </div>
+                <div id="dogStatusEmpty" class="empty-state">No detected dogs yet.</div>
+                <div id="dogStatusList" class="dog-status-list"></div>
+            </div>
+
+            <div class="runs-card-wrap">
+                <div class="tabs" role="tablist" aria-label="Prediction type">
+                    <button id="tabImageRuns" class="tab-btn active" onclick="showDashboardTab('image')">Image</button>
+                    <button id="tabVideoRuns" class="tab-btn" onclick="showDashboardTab('video')">Video</button>
+                </div>
+
+                <div id="tabPanelImage" class="tab-panel">
+                    <div id="dashboardEmptyImage" class="empty-state">No image predictions yet.</div>
+                    <div id="dashboardImageRuns" class="runs-grid"></div>
+                </div>
+
+                <div id="tabPanelVideo" class="tab-panel" style="display:none;">
+                    <div id="dashboardEmptyVideo" class="empty-state">No video predictions yet.</div>
+                    <div id="dashboardVideoRuns" class="runs-grid"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+</body>
+</html>

@@ -1,0 +1,50 @@
+{
+  "1": {
+    "dog_id": "1",
+    "n_samples": 0,
+    "healthy_prob_mean": 0.5,
+    "healthy_prob_M2": 0.0,
+    "healthy_threshold": 0.5,
+    "probs_mean": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "updated_at": null
+  },
+  "default": {
+    "dog_id": "default",
+    "n_samples": 1,
+    "healthy_prob_mean": 0.9763548970222473,
+    "healthy_prob_M2": 0.0,
+    "healthy_threshold": 0.9763548970222473,
+    "probs_mean": [
+      0.0019213324412703514,
+      0.016342120245099068,
+      0.9763548970222473,
+      0.0028461019974201918,
+      0.0007905570673756301,
+      0.001744925742968917
+    ],
+    "updated_at": "2026-03-30T06:46:43.102245+00:00"
+  },
+  "2": {
+    "dog_id": "2",
+    "n_samples": 0,
+    "healthy_prob_mean": 0.5,
+    "healthy_prob_M2": 0.0,
+    "healthy_threshold": 0.5,
+    "probs_mean": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "updated_at": null
+  }
+}
