@@ -427,6 +427,8 @@ function uploadVideo() {
                                 <img class="thumb-img" src="${imgSrc}" alt="Unhealthy frame ${t.frame_index}" />
                                 <div class="thumb-meta">
                                     Frame ${t.frame_index} (${t.time_seconds}s)
+                                    <br />
+                                    Disease: ${escapeHtml(t.predicted_label || "-")}
                                 </div>
                                 
                             </div>
@@ -474,6 +476,173 @@ function downloadCurrentVideoCSV() {
     downloadCSV(results, "video_frame_predictions_current.csv");
 }
 
+function normalizeChatText(s) {
+    return (s || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function getChatAssistantAnswer(userText) {
+    const q = normalizeChatText(userText);
+
+    const disclaimer =
+        "Note: This is general information, not a diagnosis. If symptoms are severe, spreading, or your dog seems unwell, consult a veterinarian.\n";
+
+    if (!q) {
+        return "Ask a question like “What is ringworm?” or “How to treat dog skin infection?”";
+    }
+
+    // Core topics
+    if (q.includes("ringworm") || (q.includes("fungal") && q.includes("infection"))) {
+        return (
+            "Ringworm is a **fungal** skin infection (despite the name, it’s not a worm). It can cause circular hair loss, scaling, redness, and itchiness.\n\n" +
+            "- It is **contagious** to other pets and humans.\n" +
+            "- Common care: vet-prescribed **antifungal shampoo/dips** and/or oral antifungals.\n" +
+            "- Hygiene: wash bedding, disinfect surfaces, and isolate affected pets when possible.\n\n" +
+            disclaimer
+        );
+    }
+
+    if (q.includes("dermatitis") || (q.includes("skin") && q.includes("inflammation"))) {
+        return (
+            "Dermatitis means **inflammation of the skin**. In dogs it’s often triggered by allergies (food/environment), parasites (fleas/mites), infections, or irritants.\n\n" +
+            "- Signs: redness, itching, licking, rash, scabs, odor, or recurrent ear issues.\n" +
+            "- Treatment depends on cause: flea control, allergy management, medicated shampoos, and sometimes antibiotics/antifungals or anti-itch meds.\n\n" +
+            disclaimer
+        );
+    }
+
+    if (q.includes("demodicosis") || q.includes("demodex") || (q.includes("mite") && q.includes("dog"))) {
+        return (
+            "Demodicosis (Demodex) is a **mite-related** skin condition. Demodex mites normally live on skin, but overgrowth can cause patchy hair loss, redness, and sometimes infection.\n\n" +
+            "- Often needs vet treatment (topical/oral acaricides) and follow-up skin checks.\n" +
+            "- Secondary bacterial infection is common and may need antibiotics.\n\n" +
+            disclaimer
+        );
+    }
+
+    if (q.includes("hypersensitivity") || q.includes("allergy") || q.includes("allergic")) {
+        return (
+            "Hypersensitivity is an **allergic reaction** (to fleas, food, pollen/dust, etc.). It often causes intense itching, chewing/licking, and recurrent skin/ear problems.\n\n" +
+            "- Start with flea prevention, gentle bathing, and avoiding known triggers.\n" +
+            "- A vet may recommend allergy meds, diet trials, or immunotherapy.\n\n" +
+            disclaimer
+        );
+    }
+
+    if (q.includes("skin infection") || (q.includes("treat") && q.includes("skin"))) {
+        return (
+            "For a suspected dog skin infection (bacterial or fungal), the safest approach is to identify the cause first.\n\n" +
+            "- Gently clean the area; prevent licking/scratching (cone if needed).\n" +
+            "- Use vet-approved medicated shampoo/antiseptic washes when recommended.\n" +
+            "- Avoid human creams unless a vet confirms they are safe for dogs.\n" +
+            "- Seek vet help if there’s pus, strong odor, widespread hair loss, fever, pain, or rapid spreading.\n\n" +
+            disclaimer
+        );
+    }
+
+    if (q.includes("contagious") || q.includes("spread")) {
+        return (
+            "Some dog skin problems can spread.\n\n" +
+            "- **Ringworm** (fungal) can spread to humans and pets.\n" +
+            "- Some **mites** (like sarcoptic mange) are contagious; Demodex usually isn’t.\n" +
+            "- Bacterial infections often spread by contact if the skin barrier is damaged.\n\n" +
+            "If you suspect something contagious, limit contact, wash hands, and clean bedding.\n\n" +
+            disclaimer
+        );
+    }
+
+    // Fallback
+    return (
+        "I can help with common questions like:\n" +
+        "- What is ringworm?\n" +
+        "- What is dermatitis?\n" +
+        "- How to treat dog skin infection?\n" +
+        "- Is it contagious?\n\n" +
+        "Type one of these, or click a suggested question below.\n\n" +
+        disclaimer
+    );
+}
+
+function initChatAssistant() {
+    const fab = document.getElementById("chatFab");
+    const panel = document.getElementById("chatPanel");
+    const closeBtn = document.getElementById("chatCloseBtn");
+    const messages = document.getElementById("chatMessages");
+    const form = document.getElementById("chatForm");
+    const input = document.getElementById("chatInput");
+    const suggestions = document.getElementById("chatSuggestions");
+
+    if (!fab || !panel || !closeBtn || !messages || !form || !input || !suggestions) return;
+
+    const SUGGESTED = [
+        "What is ringworm?",
+        "How to treat dog skin infection?",
+        "What is dermatitis?",
+        "Is ringworm contagious to humans?",
+        "What is demodicosis (Demodex)?",
+        "What does hypersensitivity mean?",
+    ];
+
+    function setOpen(isOpen) {
+        panel.style.display = isOpen ? "flex" : "none";
+        fab.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        if (isOpen) {
+            input.focus();
+            messages.scrollTop = messages.scrollHeight;
+        }
+    }
+
+    function addBubble(role, text) {
+        const div = document.createElement("div");
+        div.className = "chat-bubble " + role;
+        div.textContent = text;
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    function respondTo(text) {
+        const answer = getChatAssistantAnswer(text);
+        addBubble("assistant", answer);
+    }
+
+    // Seed suggestions
+    suggestions.innerHTML = SUGGESTED.map(q => {
+        const safe = escapeHtml(q);
+        return `<button class="chat-suggest-btn" type="button" data-q="${safe}">${safe}</button>`;
+    }).join("");
+
+    suggestions.addEventListener("click", (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest("button[data-q]") : null;
+        if (!btn) return;
+        const q = btn.getAttribute("data-q") || "";
+        setOpen(true);
+        input.value = q;
+        if (typeof form.requestSubmit === "function") {
+            form.requestSubmit();
+        } else {
+            form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+        }
+    });
+
+    fab.addEventListener("click", () => setOpen(panel.style.display === "none"));
+    closeBtn.addEventListener("click", () => setOpen(false));
+
+    form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const text = (input.value || "").trim();
+        if (!text) return;
+        addBubble("user", text);
+        input.value = "";
+        respondTo(text);
+    });
+
+    // Initial assistant greeting (once)
+    addBubble("assistant", "Hi! Ask me about common dog skin conditions (ringworm, dermatitis, allergies, mites) and basic care steps.");
+}
+
 // Expose functions for onclick
 window.uploadImage = uploadImage;
 window.uploadVideo = uploadVideo;
@@ -485,3 +654,4 @@ window.downloadStoredVideoCSV = downloadStoredVideoCSV;
 // Initial render from localStorage
 renderAllDashboards();
 showDashboardTab("image");
+initChatAssistant();
