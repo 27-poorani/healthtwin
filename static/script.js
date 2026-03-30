@@ -59,6 +59,232 @@ function computeVideoOverall(results) {
     };
 }
 
+function classifySeverityFromHealthyProb(healthyProb, threshold, healthStatus) {
+    const p = Number(healthyProb);
+    const t = Number(threshold);
+    const status = healthStatus === "Healthy" ? "Healthy" : "Unhealthy";
+
+    if (!isFinite(p) || !isFinite(t)) {
+        return { label: "Mild", key: "mild" };
+    }
+
+    // If predicted Healthy, we consider severity Mild (no disease detected).
+    if (status === "Healthy") {
+        return { label: "Mild", key: "mild" };
+    }
+
+    // Unhealthy severity based on how far below the baseline threshold the healthy-probability is.
+    const deficit = Math.max(0, t - p); // 0..1
+    if (deficit < 0.10) return { label: "Mild", key: "mild" };
+    if (deficit < 0.25) return { label: "Moderate", key: "moderate" };
+    return { label: "Severe", key: "severe" };
+}
+
+function classifySeverityFromVideo(results) {
+    const total = results ? results.length : 0;
+    if (!total) return { label: "Mild", key: "mild" };
+    const unhealthy = results.reduce((acc, r) => acc + (r.health_status === "Healthy" ? 0 : 1), 0);
+    const ratio = unhealthy / total;
+    if (ratio < 0.20) return { label: "Mild", key: "mild" };
+    if (ratio < 0.50) return { label: "Moderate", key: "moderate" };
+    return { label: "Severe", key: "severe" };
+}
+
+function getDiseaseCareInfo(diseaseLabel) {
+    const label = (diseaseLabel || "").trim();
+
+    // Conservative defaults for safety.
+    const defaultInfo = {
+        steps: [
+            "Keep the area clean and dry.",
+            "Prevent licking/scratching (use a cone if needed).",
+            "Avoid using human creams/medicines unless your vet confirms they are safe for dogs.",
+            "If you notice worsening lesions, pus, strong odor, fever, or spreading, contact a veterinarian.",
+        ],
+        vet: "Yes",
+        contagious: "No",
+    };
+
+    // Map from model output labels to care tips.
+    if (label === "Healthy") {
+        return {
+            steps: [
+                "Monitor your dog’s skin for any new redness, itching, or hair loss.",
+                "Maintain good hygiene and continue regular flea/tick prevention.",
+            ],
+            vet: "No",
+            contagious: "No",
+        };
+    }
+
+    if (label === "Ringworm") {
+        return {
+            steps: [
+                "Isolate affected pets from other animals when possible.",
+                "Wash hands after touching your dog; clean/disinfect bedding and grooming tools.",
+                "Avoid touching lesions with bare hands and prevent licking/scratching (cone if needed).",
+                "Use vet-prescribed antifungal treatment as directed (shampoo/dips or oral meds).",
+                "Do not use steroid-only creams (they can worsen fungal problems).",
+            ],
+            vet: "Urgent",
+            contagious: "Yes",
+        };
+    }
+
+    if (label === "Fungal Infections") {
+        return {
+            steps: [
+                "Keep lesions clean; gently bathe only with vet-approved medicated products.",
+                "Prevent licking/scratching (cone if needed).",
+                "Wash hands after care and clean bedding/grooming items.",
+                "Follow vet instructions for antifungal shampoo/dips or oral antifungal medication.",
+            ],
+            vet: "Urgent",
+            contagious: "Yes",
+        };
+    }
+
+    if (label === "Dermatitis") {
+        return {
+            steps: [
+                "Try to identify and remove possible triggers (irritants, new foods, grooming products).",
+                "Use gentle cleansing and keep the coat dry.",
+                "Start flea prevention if not already using it (fleas can cause dermatitis).",
+                "Prevent licking/scratching and consider a vet visit to find the root cause.",
+            ],
+            vet: "Yes",
+            contagious: "No",
+        };
+    }
+
+    if (label === "Hypersensitivity") {
+        return {
+            steps: [
+                "Start/continue flea prevention and avoid known environmental triggers when possible.",
+                "Avoid random human anti-itch products; ask your vet for safe allergy control.",
+                "Consider a diet/allergy plan with your vet if symptoms keep recurring.",
+                "Prevent licking/scratching (cone/appropriate barriers).",
+            ],
+            vet: "Yes",
+            contagious: "No",
+        };
+    }
+
+    if (label === "Demodicosis") {
+        return {
+            steps: [
+                "Book a vet appointment for treatment and skin checks.",
+                "Follow vet instructions for dips/topicals/oral meds; do not stop early.",
+                "Treat any secondary skin infection if your vet finds one.",
+            ],
+            vet: "Yes",
+            contagious: "No",
+        };
+    }
+
+    // Some datasets might output Demodicosis spelled differently; keep a fallback.
+    if (label === "Demodicosis (Demodex)" || label === "Demodex") {
+        return defaultInfo;
+    }
+
+    return defaultInfo;
+}
+
+function formatDiseaseListForDisplay(diseaseLabels) {
+    const list = (Array.isArray(diseaseLabels) ? diseaseLabels : [diseaseLabels])
+        .filter(Boolean)
+        .map(s => String(s).trim())
+        .filter(Boolean);
+
+    if (!list.length) return "-";
+    if (list.length <= 3) return list.join(", ");
+    return list.slice(0, 3).join(", ") + " + " + (list.length - 3) + " more";
+}
+
+function updateCareSuggestionsPanel(panelId, diseaseLabels) {
+    const el = document.getElementById(panelId);
+    if (!el) return;
+
+    const labels = (Array.isArray(diseaseLabels) ? diseaseLabels : [diseaseLabels])
+        .filter(Boolean)
+        .map(s => String(s).trim())
+        .filter(Boolean);
+
+    const safeLabels = labels.length ? labels : ["-"];
+    const displayDisease = formatDiseaseListForDisplay(safeLabels);
+
+    // Merge info across diseases (video may include multiple).
+    const stepsSeen = new Set();
+    const mergedSteps = [];
+
+    let vetLevel = "No"; // No < Yes < Urgent
+    let contagious = "No";
+
+    for (const d of safeLabels) {
+        const info = getDiseaseCareInfo(d);
+
+        for (const s of (info.steps || [])) {
+            if (stepsSeen.has(s)) continue;
+            stepsSeen.add(s);
+            mergedSteps.push(s);
+        }
+
+        if (info.vet === "Urgent") vetLevel = "Urgent";
+        else if (info.vet === "Yes" && vetLevel !== "Urgent") vetLevel = "Yes";
+
+        if (info.contagious === "Yes") contagious = "Yes";
+    }
+
+    const vetClass = vetLevel === "Urgent" ? "urgent" : (vetLevel === "No" ? "no" : "yes");
+    const contagiousClass = contagious === "Yes" ? "yes" : "no";
+
+    const stepsLi = mergedSteps.map(s => `<li>${escapeHtml(s)}</li>`).join("");
+
+    el.innerHTML = `
+        <div class="care-head">
+            <div>
+                <div class="care-title">Care Suggestions</div>
+                <div class="care-disease">This looks like ${escapeHtml(displayDisease || "-")}</div>
+            </div>
+            <div class="care-badges">
+                <div class="care-badge ${vetClass}">Vet: ${escapeHtml(vetLevel)}</div>
+                <div class="care-badge ${contagiousClass}">Contagious: ${escapeHtml(contagious)}</div>
+            </div>
+        </div>
+
+        <div class="care-section">
+            <div class="care-section-title">Immediate care steps</div>
+            <ul class="care-steps">${stepsLi}</ul>
+        </div>
+    `;
+
+    el.style.display = "block";
+}
+
+function deriveDiseasesFromVideoResults(results) {
+    const list = (results || []).filter(r => r && r.health_status !== "Healthy");
+    if (!list.length) return ["Healthy"];
+
+    // Preserve insertion order so the panel looks consistent.
+    const diseases = new Set();
+    for (const r of list) {
+        const k = (r.predicted_label || "").trim();
+        if (!k) continue;
+        diseases.add(k);
+    }
+
+    const arr = Array.from(diseases);
+    return arr.length ? arr : ["Healthy"];
+}
+
+function pushDiseaseMessageToChat(diseaseLabels) {
+    const fn = window.__chatAssistantAddMessage;
+    if (typeof fn === "function") {
+        const displayDisease = formatDiseaseListForDisplay(diseaseLabels);
+        fn("This looks like " + (displayDisease || "-") + ". Ask me anything.");
+    }
+}
+
 function downloadCSV(results, filename) {
     if (!results || !results.length) {
         alert("No results to export.");
@@ -303,6 +529,7 @@ function uploadImage() {
         const health = data.health_status || data.prediction;
         const prob = Number(data.healthy_probability);
         const threshold = Number(data.baseline_threshold);
+        const severity = classifySeverityFromHealthyProb(prob, threshold, health);
 
         const out = document.getElementById("predictionResult");
         if (out) {
@@ -312,7 +539,10 @@ function uploadImage() {
                         <div class="result-title">Image Result</div>
                         <div class="card-subtitle">Predicted class: ${escapeHtml(label)}</div>
                     </div>
-                    <div class="result-badge ${health === "Healthy" ? "good" : "bad"}">${escapeHtml(health)}</div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                        <div class="severity-pill ${escapeHtml(severity.key)}">${escapeHtml(severity.label)}</div>
+                        <div class="result-badge ${health === "Healthy" ? "good" : "bad"}">${escapeHtml(health)}</div>
+                    </div>
                 </div>
                 <div class="result-grid">
                     <div class="result-item">
@@ -325,6 +555,9 @@ function uploadImage() {
                     </div>
                 </div>`;
         }
+
+        updateCareSuggestionsPanel("careSuggestionsImage", label);
+        pushDiseaseMessageToChat(label);
 
         const run = {
             id: "img_" + Math.random().toString(16).slice(2) + "_" + Date.now(),
@@ -369,6 +602,8 @@ function uploadVideo() {
         const threshold = Number(data.baseline_threshold);
 
         const stats = computeVideoOverall(results);
+        const videoSeverity = classifySeverityFromVideo(results);
+        const videoDiseaseLabels = deriveDiseasesFromVideoResults(results);
 
         // Show current run
         const videoOut = document.getElementById("videoPredictionResult");
@@ -386,7 +621,10 @@ function uploadVideo() {
                         <div class="result-title">Video Result</div>
                         <div class="card-subtitle">Frame extraction: every 1 second</div>
                     </div>
-                    <div class="result-badge ${stats.overall === "Healthy" ? "good" : "bad"}">${escapeHtml(stats.overall)}</div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                        <div class="severity-pill ${escapeHtml(videoSeverity.key)}">${escapeHtml(videoSeverity.label)}</div>
+                        <div class="result-badge ${stats.overall === "Healthy" ? "good" : "bad"}">${escapeHtml(stats.overall)}</div>
+                    </div>
                 </div>
                 <div class="result-grid">
                     <div class="result-item">
@@ -412,6 +650,9 @@ function uploadVideo() {
                 </details>`;
         }
 
+        updateCareSuggestionsPanel("careSuggestionsVideo", videoDiseaseLabels);
+        pushDiseaseMessageToChat(videoDiseaseLabels);
+
         // Render unhealthy frame thumbnails (if any).
         const gallery = document.getElementById("unhealthyFrameGallery");
         if (gallery) {
@@ -422,6 +663,7 @@ function uploadVideo() {
                     `<div class="gallery-title">Unhealthy Frame Images</div>` +
                     unhealthyThumbs.map(t => {
                         const imgSrc = `data:image/jpeg;base64,${t.image_base64}`;
+                        const sev = classifySeverityFromHealthyProb(t.healthy_probability, threshold, "Unhealthy");
                         return `
                             <div class="thumb-item">
                                 <img class="thumb-img" src="${imgSrc}" alt="Unhealthy frame ${t.frame_index}" />
@@ -429,6 +671,8 @@ function uploadVideo() {
                                     Frame ${t.frame_index} (${t.time_seconds}s)
                                     <br />
                                     Disease: ${escapeHtml(t.predicted_label || "-")}
+                                    <br />
+                                    Severity: <span class="severity-pill ${escapeHtml(sev.key)}" style="padding:4px 8px; font-size:11px;">${escapeHtml(sev.label)}</span>
                                 </div>
                                 
                             </div>
@@ -641,6 +885,9 @@ function initChatAssistant() {
 
     // Initial assistant greeting (once)
     addBubble("assistant", "Hi! Ask me about common dog skin conditions (ringworm, dermatitis, allergies, mites) and basic care steps.");
+
+    // Allow other parts of the app to push a message into the chat.
+    window.__chatAssistantAddMessage = (text) => addBubble("assistant", text);
 }
 
 // Expose functions for onclick

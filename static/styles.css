@@ -285,6 +285,33 @@ body{
     border-color: rgba(220,38,38,0.22);
 }
 
+.severity-pill{
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-weight: 1000;
+    border: 1px solid transparent;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.severity-pill.mild{
+    background: rgba(22,163,74,0.12);
+    color: var(--good);
+    border-color: rgba(22,163,74,0.22);
+}
+
+.severity-pill.moderate{
+    background: rgba(234,179,8,0.14);
+    color: #a16207;
+    border-color: rgba(234,179,8,0.30);
+}
+
+.severity-pill.severe{
+    background: rgba(220,38,38,0.10);
+    color: var(--bad);
+    border-color: rgba(220,38,38,0.22);
+}
+
 .result-grid{
     display:grid;
     grid-template-columns: 1fr 1fr;
@@ -581,6 +608,88 @@ body{
     color: var(--muted);
     line-height: 1.3;
     font-weight: 800;
+}
+
+/* Care Suggestions Panel */
+.care-panel{
+    margin-top: 12px;
+    padding: 12px 12px 12px 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(15,23,42,0.06);
+    background: #f8fafc;
+}
+
+.care-head{
+    display:flex;
+    justify-content: space-between;
+    align-items:flex-start;
+    gap: 10px;
+}
+
+.care-title{
+    font-weight: 1000;
+    font-size: 14px;
+}
+
+.care-disease{
+    color: var(--primary);
+    font-weight: 1000;
+    font-size: 13px;
+    margin-top: 6px;
+}
+
+.care-badges{
+    display:flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content:flex-end;
+    align-items:center;
+}
+
+.care-badge{
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(15,23,42,0.08);
+    font-weight: 1000;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.care-badge.yes{
+    background: rgba(22,163,74,0.10);
+    color: #15803d;
+    border-color: rgba(22,163,74,0.22);
+}
+
+.care-badge.no{
+    background: rgba(22,163,74,0.08);
+    color: #0f3a86;
+    border-color: rgba(11,94,215,0.18);
+}
+
+.care-badge.urgent{
+    background: rgba(220,38,38,0.10);
+    color: var(--bad);
+    border-color: rgba(220,38,38,0.22);
+}
+
+.care-section{
+    margin-top: 12px;
+}
+
+.care-section-title{
+    font-weight: 1000;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 6px;
+}
+
+.care-steps{
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
 }
 
 /* Chat assistant */
