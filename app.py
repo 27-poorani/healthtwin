@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import os
 import json
 from datetime import datetime, timezone
@@ -14,6 +14,11 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-secret-key-change-me")
+
+# Simple hardcoded admin credentials (not for production)
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
 # Load the trained model
 model = load_model("model/dog_skin_disease_model.h5")
@@ -181,6 +186,7 @@ def predict():
             "health_status": health_status,
             "healthy_probability": healthy_prob,
             "baseline_threshold": float(profile.get("healthy_threshold", 0.5)),
+            "average_healthy_score": float(profile.get("healthy_prob_mean", 0.5)),
             "dog_id": dog_id,
         }
     )
@@ -264,6 +270,7 @@ def predict_video():
         {
             "results": results,
             "baseline_threshold": float(profile.get("healthy_threshold", 0.5)),
+            "average_healthy_score": float(profile.get("healthy_prob_mean", 0.5)),
             "dog_id": dog_id,
             "unhealthy_thumbnails": unhealthy_thumbnails,
         }
@@ -362,6 +369,44 @@ def _parse_json_body():
     data = request.get_json(silent=True)
     return data if isinstance(data, dict) else {}
 
+def _is_admin() -> bool:
+    return bool(session.get("is_admin"))
+
+def _require_admin():
+    if not _is_admin():
+        return redirect(url_for("admin_login"))
+    return None
+
+@app.route("/admin", methods=["GET"])
+def admin_index():
+    if _is_admin():
+        return redirect(url_for("admin_reports"))
+    return redirect(url_for("admin_login"))
+
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    err = None
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        password = (request.form.get("password") or "").strip()
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            session["is_admin"] = True
+            return redirect(url_for("admin_reports"))
+        err = "Invalid username or password."
+    return render_template("admin_login.html", error=err)
+
+@app.route("/admin/logout", methods=["POST"])
+def admin_logout():
+    session.clear()
+    return redirect(url_for("admin_login"))
+
+@app.route("/admin/reports", methods=["GET"])
+def admin_reports():
+    gate = _require_admin()
+    if gate is not None:
+        return gate
+    return render_template("admin_reports.html")
+
 @app.route("/api/report_dog", methods=["POST"])
 def report_dog():
     """
@@ -407,6 +452,7 @@ def report_dog():
         "disease": disease_list,
         "severity": severity,
         "createdAt": datetime.now(timezone.utc).isoformat(),
+        "status": "Reported",
     }
 
     if lat is not None and lng is not None:
@@ -455,6 +501,7 @@ def get_reported_dogs():
                 "id": str(d.get("_id")),
                 "disease": d.get("disease", []),
                 "severity": d.get("severity"),
+                "status": d.get("status", "Reported"),
                 "lat": d.get("location_lat"),
                 "lng": d.get("location_lng"),
                 "createdAt": d.get("createdAt"),
@@ -464,6 +511,69 @@ def get_reported_dogs():
             }
         )
     return jsonify({"reports": out})
+
+
+@app.route("/api/admin/reports", methods=["GET"])
+def admin_api_reports():
+    if not _is_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        collection = _get_reports_collection()
+        docs = list(collection.find({}).sort("createdAt", -1).limit(1000))
+    except Exception as e:
+        return jsonify({"error": "Could not load reports from MongoDB", "details": str(e)}), 500
+
+    out = []
+    for d in docs:
+        out.append(
+            {
+                "id": str(d.get("_id")),
+                "dog_id": d.get("dog_id", "default"),
+                "disease": d.get("disease", []),
+                "severity": d.get("severity"),
+                "status": d.get("status", "Reported"),
+                "lat": d.get("location_lat"),
+                "lng": d.get("location_lng"),
+                "createdAt": d.get("createdAt"),
+                "notes": d.get("notes", ""),
+                "image_base64": d.get("image_base64"),
+                "image_mime": d.get("image_mime", "image/jpeg"),
+            }
+        )
+    return jsonify({"reports": out})
+
+
+@app.route("/api/admin/reports/<report_id>/status", methods=["POST"])
+def admin_api_update_status(report_id: str):
+    if not _is_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    body = _parse_json_body()
+    status = (body.get("status") or "").strip()
+    allowed = {"Reported", "In Progress", "Resolved"}
+    if status not in allowed:
+        return jsonify({"error": "Invalid status"}), 400
+    try:
+        collection = _get_reports_collection()
+        res = collection.update_one({"_id": ObjectId(report_id)}, {"$set": {"status": status}})
+        if res.matched_count == 0:
+            return jsonify({"error": "Report not found"}), 404
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": "Could not update status", "details": str(e)}), 500
+
+
+@app.route("/api/admin/reports/<report_id>", methods=["DELETE"])
+def admin_api_delete_report(report_id: str):
+    if not _is_admin():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        collection = _get_reports_collection()
+        res = collection.delete_one({"_id": ObjectId(report_id)})
+        if res.deleted_count == 0:
+            return jsonify({"error": "Report not found"}), 404
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": "Could not delete report", "details": str(e)}), 500
 
 
 @app.route("/reports-map", methods=["GET"])

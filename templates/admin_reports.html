@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Reports</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        .admin-wrap{ margin-top:16px; padding-bottom: 20px; }
+        .admin-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+        .admin-toolbar{ display:flex; justify-content: space-between; align-items:flex-start; gap:12px; padding:16px 16px 0 16px; }
+        .admin-table{ width:100%; border-collapse: collapse; margin-top: 12px; }
+        .admin-table th, .admin-table td{ text-align:left; padding:10px; border-bottom:1px solid rgba(15,23,42,0.08); vertical-align: top; font-size: 13px; }
+        .admin-table th{ color: #0f172a; font-weight: 1000; background:#f8fafc; position: sticky; top: 0; }
+        .admin-thumb{ width:60px; height:60px; object-fit: cover; border-radius: 12px; border:1px solid rgba(15,23,42,0.08); background:#fff; }
+        .admin-badges{ display:flex; gap:8px; flex-wrap:wrap; }
+        .admin-select{ padding:8px 10px; border-radius: 12px; border:1px solid rgba(15,23,42,0.12); }
+        .admin-danger{ background:#fff1f2; color:#991b1b; border:1px solid rgba(220,38,38,0.22); border-radius: 12px; padding:8px 12px; cursor:pointer; font-weight: 900; }
+        .admin-danger:hover{ filter: brightness(0.98); }
+        .admin-muted{ color:#64748b; font-weight: 800; font-size: 12px; }
+        .admin-container{ overflow:auto; max-height: calc(100vh - 220px); border-top: 1px solid rgba(15,23,42,0.06); margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="container header-inner">
+            <div class="header-left">
+                <h1>Admin - Reports</h1>
+            </div>
+            <div class="header-right admin-actions">
+                <a class="header-link" href="/">Back to Detector</a>
+                <form method="POST" action="/admin/logout" style="margin:0;">
+                    <button class="secondary-btn" type="submit">Logout</button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <main class="container admin-wrap">
+        <section class="card dashboard-card">
+            <div class="admin-toolbar">
+                <div>
+                    <div class="result-title" style="font-size:16px;">All reports</div>
+                    <div class="card-subtitle">Update status or delete fake reports.</div>
+                </div>
+                <div class="admin-actions">
+                    <button id="refreshBtn" class="secondary-btn" type="button">Refresh</button>
+                    <div id="adminStatus" class="admin-muted"></div>
+                </div>
+            </div>
+
+            <div class="admin-container">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Image</th>
+                            <th>Date</th>
+                            <th>Dog ID</th>
+                            <th>Location</th>
+                            <th>Disease</th>
+                            <th>Severity</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adminReportsBody"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const escapeHtml = (v) => {
+            const s = (v === null || v === undefined) ? "" : String(v);
+            return s.replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        };
+
+        const statusEl = document.getElementById("adminStatus");
+        const bodyEl = document.getElementById("adminReportsBody");
+        const refreshBtn = document.getElementById("refreshBtn");
+        const GEO_CACHE_KEY = "dogSkin.adminGeoCache.v1";
+        const geoInFlight = new Map();
+
+        function setStatus(text){ if(statusEl) statusEl.textContent = text || ""; }
+
+        async function loadReports(){
+            setStatus("Loading...");
+            const resp = await fetch("/api/admin/reports");
+            if (!resp.ok) {
+                const data = await resp.json().catch(()=> ({}));
+                throw new Error(data.error || "Failed to load reports");
+            }
+            const data = await resp.json();
+            return data.reports || [];
+        }
+
+        function severityKey(label){
+            if (label === "Severe") return "severe";
+            if (label === "Moderate") return "moderate";
+            return "mild";
+        }
+
+        function formatDate(iso){
+            try{
+                const d = new Date(iso);
+                if(isNaN(d.getTime())) return String(iso||"");
+                return d.toLocaleString();
+            }catch(e){ return String(iso||""); }
+        }
+
+        function cacheLoad(){
+            try{
+                const raw = window.localStorage.getItem(GEO_CACHE_KEY);
+                const parsed = raw ? JSON.parse(raw) : {};
+                return parsed && typeof parsed === "object" ? parsed : {};
+            }catch(e){ return {}; }
+        }
+
+        function cacheSave(cache){
+            try{ window.localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(cache)); }
+            catch(e){ /* ignore */ }
+        }
+
+        function roundCoord(v){
+            const n = Number(v);
+            if(!isFinite(n)) return null;
+            return Math.round(n * 1000) / 1000;
+        }
+
+        async function reverseGeocodeName(lat, lng){
+            const latR = roundCoord(lat);
+            const lngR = roundCoord(lng);
+            if(latR === null || lngR === null) return null;
+            const key = `${latR},${lngR}`;
+            const cache = cacheLoad();
+            if(cache[key]) return cache[key];
+            if(geoInFlight.has(key)) return await geoInFlight.get(key);
+
+            const p = (async () => {
+                try{
+                    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(latR)}&lon=${encodeURIComponent(lngR)}`;
+                    const resp = await fetch(url, { headers: { "Accept": "application/json" } });
+                    if(!resp.ok) return null;
+                    const data = await resp.json();
+                    const name = data && (data.name || data.display_name) ? String(data.name || data.display_name) : null;
+                    if(name){
+                        cache[key] = name;
+                        const keys = Object.keys(cache);
+                        if(keys.length > 250){
+                            for(const k of keys.slice(0, keys.length - 250)) delete cache[k];
+                        }
+                        cacheSave(cache);
+                    }
+                    return name;
+                }catch(e){
+                    return null;
+                }finally{
+                    geoInFlight.delete(key);
+                }
+            })();
+
+            geoInFlight.set(key, p);
+            return await p;
+        }
+
+        function sleepMs(ms){
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function resolveAdminLocationNames(containerEl){
+            if(!containerEl) return;
+            const nodes = Array.from(containerEl.querySelectorAll("span[data-lat][data-lng]"));
+            for(const el of nodes){
+                try{
+                    if(!el || el.dataset.resolved === "1") continue;
+                    const lat = el.getAttribute("data-lat");
+                    const lng = el.getAttribute("data-lng");
+                    const name = await reverseGeocodeName(lat, lng);
+                    el.textContent = name ? name : "Unknown";
+                    el.dataset.resolved = "1";
+                    await sleepMs(250);
+                }catch(e){ /* ignore */ }
+            }
+        }
+
+        async function updateStatus(id, nextStatus){
+            const resp = await fetch(`/api/admin/reports/${id}/status`, {
+                method: "POST",
+                headers: {"Content-Type":"application/json"},
+                body: JSON.stringify({status: nextStatus})
+            });
+            const data = await resp.json().catch(()=> ({}));
+            if(!resp.ok) throw new Error(data.error || "Update failed");
+        }
+
+        async function deleteReport(id){
+            const resp = await fetch(`/api/admin/reports/${id}`, { method: "DELETE" });
+            const data = await resp.json().catch(()=> ({}));
+            if(!resp.ok) throw new Error(data.error || "Delete failed");
+        }
+
+        function render(reports){
+            if(!bodyEl) return;
+            bodyEl.innerHTML = reports.map(r => {
+                const diseaseText = Array.isArray(r.disease) ? r.disease.join(", ") : (r.disease || "-");
+                const sevLabel = r.severity || "Mild";
+                const sevKey = severityKey(sevLabel);
+                const imgB64 = r.image_base64;
+                const imgMime = r.image_mime || "image/jpeg";
+                const imgHtml = (typeof imgB64 === "string" && imgB64.trim())
+                    ? `<img class="admin-thumb" alt="Dog" src="data:${escapeHtml(imgMime)};base64,${imgB64}" />`
+                    : `<div class="admin-thumb" style="display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;font-size:12px;">No image</div>`;
+
+                const status = r.status || "Reported";
+                const hasCoords = isFinite(Number(r.lat)) && isFinite(Number(r.lng));
+                const locId = `adminLoc_${String(r.id || "").replaceAll(/[^a-zA-Z0-9_-]/g, "")}`;
+                return `
+                    <tr data-id="${escapeHtml(r.id)}">
+                        <td>${imgHtml}</td>
+                        <td>${escapeHtml(formatDate(r.createdAt))}</td>
+                        <td>${escapeHtml(r.dog_id || "default")}</td>
+                        <td>${hasCoords ? `<span id="${escapeHtml(locId)}" data-lat="${escapeHtml(r.lat)}" data-lng="${escapeHtml(r.lng)}">Loading...</span>` : "-"}</td>
+                        <td>${escapeHtml(diseaseText)}</td>
+                        <td><span class="severity-pill ${escapeHtml(sevKey)}" style="padding:4px 10px;">${escapeHtml(sevLabel)}</span></td>
+                        <td>
+                            <select class="admin-select" data-action="status">
+                                ${["Reported","In Progress","Resolved"].map(s => `<option value="${s}" ${s===status?"selected":""}>${s}</option>`).join("")}
+                            </select>
+                        </td>
+                        <td>${escapeHtml(r.notes || "")}</td>
+                        <td>
+                            <button class="admin-danger" type="button" data-action="delete">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+            resolveAdminLocationNames(bodyEl);
+        }
+
+        async function refresh(){
+            try{
+                const reports = await loadReports();
+                render(reports);
+                setStatus(`Loaded ${reports.length} reports`);
+            }catch(e){
+                setStatus(`Error: ${e.message || e}`);
+            }
+        }
+
+        refreshBtn && refreshBtn.addEventListener("click", refresh);
+
+        bodyEl && bodyEl.addEventListener("change", async (e) => {
+            const sel = e.target;
+            if(!sel || sel.getAttribute("data-action") !== "status") return;
+            const tr = sel.closest("tr[data-id]");
+            if(!tr) return;
+            const id = tr.getAttribute("data-id");
+            const next = sel.value;
+            setStatus("Updating status...");
+            try{
+                await updateStatus(id, next);
+                setStatus("Status updated.");
+            }catch(err){
+                setStatus(`Error: ${err.message || err}`);
+            }
+        });
+
+        bodyEl && bodyEl.addEventListener("click", async (e) => {
+            const btn = e.target;
+            if(!btn || btn.getAttribute("data-action") !== "delete") return;
+            const tr = btn.closest("tr[data-id]");
+            if(!tr) return;
+            const id = tr.getAttribute("data-id");
+            if(!confirm("Delete this report?")) return;
+            setStatus("Deleting...");
+            try{
+                await deleteReport(id);
+                tr.remove();
+                setStatus("Deleted.");
+            }catch(err){
+                setStatus(`Error: ${err.message || err}`);
+            }
+        });
+
+        refresh();
+    </script>
+</body>
+</html>
+

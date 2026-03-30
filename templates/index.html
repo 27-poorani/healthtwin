@@ -16,6 +16,7 @@
             <div class="header-right">
                 
                 <a class="header-link" href="/reports-map">Reports Map</a>
+                <a class="header-link" href="/admin/login">Admin Login</a>
             </div>
         </div>
     </header>
@@ -23,8 +24,8 @@
     <main class="container main-grid">
         <section class="card twin-card">
             <div class="card-title">
-                <h2>Digital Twin Profile (Healthy)</h2>
-                <p class="card-subtitle">Healthy reference look & baseline parameters (display only)</p>
+                <h2>Healthy Reference Profile</h2>
+                <p class="card-subtitle">Simple baseline values used for prediction.</p>
             </div>
 
             <div class="twin-photos" aria-label="Healthy dog photos">
@@ -34,16 +35,37 @@
             </div>
 
             <div class="baseline-params">
-                <div class="digital-twin-row"><span class="label">Dog profile id</span><span class="value">default</span></div>
-                <div class="digital-twin-row"><span class="label">Healthy Mean Probability</span><span class="value">0.500000</span></div>
-                <div class="digital-twin-row"><span class="label">Healthy Std (derived)</span><span class="value">0.000000</span></div>
-                <div class="digital-twin-row"><span class="label">Healthy Threshold</span><span class="value">0.500000</span></div>
-                <div class="digital-twin-row"><span class="label">Healthy Prob M2</span><span class="value">0.000000</span></div>
-                <div class="digital-twin-row"><span class="label">Updated at</span><span class="value">-</span></div>
+                <div class="digital-twin-row"><span class="label">Dog ID used for prediction</span><span id="profileDogIdValue" class="value">default</span></div>
+                <div class="digital-twin-row">
+                    <div style="width:100%;">
+                        <div class="label">Average Healthy Score</div>
+                        <div class="score-progress-wrap">
+                            <div class="score-progress" role="progressbar" aria-label="Average Healthy Score" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.5">
+                                <div id="avgHealthyScoreFill" class="score-progress-fill" style="width:50%;"></div>
+                            </div>
+                            <div id="avgHealthyScoreValue" class="score-progress-value">0.50</div>
+                        </div>
+                        <div id="avgHealthyScoreStatus" class="score-status stable">Stable</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="healthComparisonCard" class="health-comparison" style="display:none;">
+                <div class="health-comparison-title">Health Comparison</div>
+                <div class="health-comparison-grid">
+                    <div class="result-item">
+                        <div class="result-label">Current Health Score</div>
+                        <div id="currentHealthScoreValue" class="result-value">-</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Baseline Score</div>
+                        <div id="baselineHealthScoreValue" class="result-value">-</div>
+                    </div>
+                </div>
             </div>
 
             <div class="tip">
-                Tip: Enter a different <b>Dog ID</b> if you want the dashboard to group predictions by dog.
+                Tip: Enter a different <b>Dog ID</b> to track each dog separately.
             </div>
         </section>
 

@@ -45,6 +45,50 @@ function formatWhen(iso) {
     return d.toLocaleString();
 }
 
+function clampScore01(value, fallback = 0.5) {
+    const n = Number(value);
+    if (!isFinite(n)) return fallback;
+    if (n < 0) return 0;
+    if (n > 1) return 1;
+    return n;
+}
+
+function updateHealthyReferenceProfile(dogId, averageHealthyScore) {
+    const dogIdEl = document.getElementById("profileDogIdValue");
+    const fillEl = document.getElementById("avgHealthyScoreFill");
+    const valueEl = document.getElementById("avgHealthyScoreValue");
+    const statusEl = document.getElementById("avgHealthyScoreStatus");
+    const progressEl = document.querySelector(".score-progress");
+
+    if (dogIdEl) dogIdEl.textContent = String(dogId || "default");
+
+    const score = clampScore01(averageHealthyScore, 0.5);
+    const pct = Math.round(score * 100);
+    const isStable = score >= 0.5;
+
+    if (fillEl) fillEl.style.width = `${pct}%`;
+    if (valueEl) valueEl.textContent = score.toFixed(2);
+    if (progressEl) progressEl.setAttribute("aria-valuenow", score.toFixed(2));
+    if (statusEl) {
+        statusEl.textContent = isStable ? "Stable" : "Low Stability";
+        statusEl.classList.toggle("stable", isStable);
+        statusEl.classList.toggle("low", !isStable);
+    }
+}
+
+function renderHealthComparison(currentScore, baselineScore) {
+    const card = document.getElementById("healthComparisonCard");
+    const currentEl = document.getElementById("currentHealthScoreValue");
+    const baselineEl = document.getElementById("baselineHealthScoreValue");
+    if (!card || !currentEl || !baselineEl) return;
+
+    const current = clampScore01(currentScore, 0);
+    const baseline = clampScore01(baselineScore, 0.5);
+    currentEl.textContent = current.toFixed(2);
+    baselineEl.textContent = baseline.toFixed(2);
+    card.style.display = "block";
+}
+
 function computeVideoOverall(results) {
     let healthy = 0;
     let unhealthy = 0;
@@ -472,6 +516,13 @@ function severityKeyFromLabel(label) {
     return "mild";
 }
 
+function reportStatusKeyFromLabel(label) {
+    const v = String(label || "").trim();
+    if (v === "Resolved") return "resolved";
+    if (v === "In Progress") return "inprogress";
+    return "reported";
+}
+
 async function renderReportsHistory() {
     const listEl = document.getElementById("reportsHistoryList");
     const emptyEl = document.getElementById("reportsHistoryEmpty");
@@ -520,7 +571,11 @@ async function renderReportsHistory() {
             const diseaseText = Array.isArray(r.disease) ? r.disease.join(", ") : (r.disease || "-");
             const sevLabel = r.severity || "Mild";
             const sevKey = severityKeyFromLabel(sevLabel);
+            const statusLabel = (r.status || "Reported");
+            const statusKey = reportStatusKeyFromLabel(statusLabel);
             const notes = (r.notes || "").trim();
+            const hasCoords = isFinite(Number(r.lat)) && isFinite(Number(r.lng));
+            const locId = `reportLoc_${String(r.id || "").replaceAll(/[^a-zA-Z0-9_-]/g, "")}`;
             const imgB64 = r.image_base64;
             const imgMime = r.image_mime || "image/jpeg";
             const imgHtml = (typeof imgB64 === "string" && imgB64.trim())
@@ -535,8 +590,12 @@ async function renderReportsHistory() {
                                 <div>
                                     <div class="report-date">${escapeHtml(formatIsoToLocal(r.createdAt))}</div>
                                     <div class="report-disease">${escapeHtml(diseaseText)}</div>
+                                    ${hasCoords ? `<div class="report-location"><b>Location:</b> <span id="${escapeHtml(locId)}" data-lat="${escapeHtml(r.lat)}" data-lng="${escapeHtml(r.lng)}">Loading…</span></div>` : ""}
                                 </div>
-                                <div class="severity-pill ${escapeHtml(sevKey)}">${escapeHtml(sevLabel)}</div>
+                                <div class="report-pills">
+                                    <div class="report-status-pill ${escapeHtml(statusKey)}">${escapeHtml(statusLabel)}</div>
+                                    <div class="severity-pill ${escapeHtml(sevKey)}">${escapeHtml(sevLabel)}</div>
+                                </div>
                             </div>
                             ${notes ? `<div class="report-notes"><b>Notes:</b> ${escapeHtml(notes)}</div>` : ""}
                         </div>
@@ -544,11 +603,125 @@ async function renderReportsHistory() {
                 </div>
             `;
         }).join("");
+
+        // After rendering, resolve human-readable location names (best-effort).
+        resolveReportLocationNames(listEl);
     } catch (e) {
         emptyEl.style.display = "block";
         emptyEl.textContent = "Could not load reports (check MongoDB connection).";
         listEl.innerHTML = "";
     }
+}
+
+const _geoCacheKey = "dogSkin.reportGeoCache.v1";
+const _geoInFlight = new Map();
+
+function _geoCacheLoad() {
+    const ls = safeGetLocalStorage();
+    if (!ls) return {};
+    try {
+        const raw = ls.getItem(_geoCacheKey);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function _geoCacheSave(cache) {
+    const ls = safeGetLocalStorage();
+    if (!ls) return;
+    try {
+        ls.setItem(_geoCacheKey, JSON.stringify(cache));
+    } catch (e) {
+        // ignore quota errors
+    }
+}
+
+function _roundCoord(v) {
+    const n = Number(v);
+    if (!isFinite(n)) return null;
+    return Math.round(n * 1000) / 1000; // ~110m precision; good for caching + privacy
+}
+
+async function reverseGeocodeName(lat, lng) {
+    const latR = _roundCoord(lat);
+    const lngR = _roundCoord(lng);
+    if (latR === null || lngR === null) return null;
+    const key = `${latR},${lngR}`;
+
+    const cache = _geoCacheLoad();
+    if (cache[key]) return cache[key];
+
+    if (_geoInFlight.has(key)) return await _geoInFlight.get(key);
+
+    const p = (async () => {
+        try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(latR)}&lon=${encodeURIComponent(lngR)}`;
+            const resp = await fetch(url, {
+                headers: {
+                    "Accept": "application/json",
+                },
+            });
+            if (!resp.ok) return null;
+            const data = await resp.json();
+            const name = (data && (data.name || data.display_name)) ? String(data.name || data.display_name) : null;
+            if (name) {
+                cache[key] = name;
+                // Keep cache bounded.
+                const keys = Object.keys(cache);
+                if (keys.length > 250) {
+                    for (const k of keys.slice(0, keys.length - 250)) delete cache[k];
+                }
+                _geoCacheSave(cache);
+            }
+            return name;
+        } catch (e) {
+            return null;
+        } finally {
+            _geoInFlight.delete(key);
+        }
+    })();
+
+    _geoInFlight.set(key, p);
+    return await p;
+}
+
+function sleepMs(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function resolveReportLocationNames(containerEl) {
+    if (!containerEl) return;
+    const nodes = Array.from(containerEl.querySelectorAll("span[data-lat][data-lng]"));
+    if (!nodes.length) return;
+
+    // Resolve sequentially to avoid hammering the geocoding service.
+    for (const el of nodes) {
+        try {
+            if (!el || el.dataset.resolved === "1") continue;
+            const lat = el.getAttribute("data-lat");
+            const lng = el.getAttribute("data-lng");
+            const name = await reverseGeocodeName(lat, lng);
+            el.textContent = name ? name : "Unknown";
+            el.dataset.resolved = "1";
+            await sleepMs(250);
+        } catch (e) {
+            // ignore
+        }
+    }
+}
+
+let _reportsHistoryPollId = null;
+function startReportsHistoryPolling() {
+    if (_reportsHistoryPollId) return;
+    // Keep main page in sync with admin status updates.
+    _reportsHistoryPollId = setInterval(() => {
+        if (document.visibilityState === "visible") renderReportsHistory();
+    }, 15000);
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") renderReportsHistory();
+    });
 }
 
 function downloadCSV(results, filename) {
@@ -798,7 +971,10 @@ function uploadImage() {
         const health = data.health_status || data.prediction;
         const prob = Number(data.healthy_probability);
         const threshold = Number(data.baseline_threshold);
+        const avgHealthyScore = clampScore01(data.average_healthy_score, 0.5);
         const severity = classifySeverityFromHealthyProb(prob, threshold, health);
+        updateHealthyReferenceProfile(dogId, avgHealthyScore);
+        renderHealthComparison(prob, avgHealthyScore);
 
         const out = document.getElementById("predictionResult");
         if (out) {
@@ -871,6 +1047,16 @@ function uploadVideo() {
         const results = data.results || [];
         const unhealthyThumbs = data.unhealthy_thumbnails || [];
         const threshold = Number(data.baseline_threshold);
+        const avgHealthyScore = clampScore01(data.average_healthy_score, 0.5);
+        updateHealthyReferenceProfile(dogId, avgHealthyScore);
+
+        const scoreValues = results
+            .map(r => Number(r && r.healthy_probability))
+            .filter(v => isFinite(v));
+        const currentScore = scoreValues.length
+            ? (scoreValues.reduce((acc, v) => acc + v, 0) / scoreValues.length)
+            : 0;
+        renderHealthComparison(currentScore, avgHealthyScore);
 
         const stats = computeVideoOverall(results);
         const videoSeverity = classifySeverityFromVideo(results);
@@ -1182,3 +1368,5 @@ renderAllDashboards();
 showDashboardTab("image");
 initChatAssistant();
 renderReportsHistory();
+updateHealthyReferenceProfile("default", 0.5);
+startReportsHistoryPolling();
