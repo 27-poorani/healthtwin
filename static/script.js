@@ -285,6 +285,272 @@ function pushDiseaseMessageToChat(diseaseLabels) {
     }
 }
 
+// Reporting state (used by "Report this dog" button)
+function setReportPredictionContext(diseaseLabels, severityKey, severityLabel, dogId) {
+    window.__reportContext = window.__reportContext || {};
+    window.__reportContext.dogId = dogId || "default";
+    window.__reportContext.diseaseLabels = (Array.isArray(diseaseLabels) ? diseaseLabels : [diseaseLabels]).filter(Boolean);
+    window.__reportContext.severityKey = severityKey || "mild";
+    window.__reportContext.severityLabel = severityLabel || "Mild";
+    window.__reportContext.predictionReady = true;
+    window.__reportContext.imageReady = false;
+    window.__reportContext.isSubmitting = false;
+    updateReportButtonState();
+}
+
+function setReportImageContext(imageBase64, imageMime) {
+    window.__reportContext = window.__reportContext || {};
+    window.__reportContext.imageBase64 = imageBase64 || null;
+    window.__reportContext.imageMime = imageMime || "image/jpeg";
+    window.__reportContext.imageReady = !!imageBase64;
+    updateReportButtonState();
+}
+
+function updateReportButtonState() {
+    const btn = document.getElementById("reportThisDogBtn");
+    const statusEl = document.getElementById("reportStatus");
+    if (!btn) return;
+    const ctx = window.__reportContext || {};
+    const ready = !!(ctx.predictionReady && ctx.imageReady);
+    btn.disabled = !ready;
+
+    if (!statusEl) return;
+
+    if (ctx.isSubmitting) {
+        statusEl.textContent = "Submitting report...";
+        return;
+    }
+
+    if (!ctx.predictionReady) {
+        statusEl.textContent = "Run an image/video prediction to enable reporting.";
+        return;
+    }
+
+    if (ctx.predictionReady && !ctx.imageReady) {
+        statusEl.textContent = "Preparing image for report…";
+        return;
+    }
+
+    statusEl.textContent = "Ready to report. We’ll ask for your current location.";
+}
+
+function fileToScaledJpegBase64(file, maxDim = 512, quality = 0.72) {
+    return new Promise((resolve) => {
+        if (!file) return resolve(null);
+        try {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const img = new Image();
+                img.onload = () => {
+                    const w = img.width;
+                    const h = img.height;
+                    const scale = Math.min(1, maxDim / Math.max(w, h));
+                    const canvas = document.createElement("canvas");
+                    canvas.width = Math.max(1, Math.round(w * scale));
+                    canvas.height = Math.max(1, Math.round(h * scale));
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+                    const base64 = dataUrl.split(",")[1];
+                    resolve(base64 || null);
+                };
+                img.onerror = () => resolve(null);
+                img.src = reader.result;
+            };
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+        } catch (e) {
+            resolve(null);
+        }
+    });
+}
+
+function getCurrentLocation() {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            return reject(new Error("Geolocation is not supported by this browser."));
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                resolve({
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    accuracy: pos.coords.accuracy,
+                });
+            },
+            (err) => reject(err),
+            {
+                enableHighAccuracy: true,
+                timeout: 15000,
+                maximumAge: 30000,
+            }
+        );
+    });
+}
+
+async function reportThisDog() {
+    const btn = document.getElementById("reportThisDogBtn");
+    const statusEl = document.getElementById("reportStatus");
+    const notesInput = document.getElementById("reportNotesInput");
+    const ctx = window.__reportContext || {};
+
+    if (btn && btn.disabled) {
+        updateReportButtonState();
+        return;
+    }
+
+    ctx.isSubmitting = true;
+    updateReportButtonState();
+
+    try {
+        if (statusEl) statusEl.textContent = "Requesting location permission…";
+        const location = await getCurrentLocation();
+        if (statusEl) statusEl.textContent = "Submitting report…";
+
+        const payload = {
+            dog_id: ctx.dogId || "default",
+            disease: ctx.diseaseLabels || [],
+            severity: ctx.severityLabel || "Mild",
+            image_base64: ctx.imageBase64 || null,
+            image_mime: ctx.imageMime || "image/jpeg",
+            location: location,
+            notes: notesInput && notesInput.value ? String(notesInput.value).trim() : "",
+        };
+
+        const resp = await fetch("/api/report_dog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            throw new Error(data.error || "Failed to submit report.");
+        }
+
+        if (statusEl) statusEl.textContent = "Thanks! Report submitted. See it in Reports History / Map.";
+        if (notesInput) notesInput.value = "";
+        renderReportsHistory();
+
+        // Prevent duplicate submissions until next prediction.
+        ctx.predictionReady = false;
+        ctx.imageReady = false;
+        ctx.isSubmitting = false;
+        updateReportButtonState();
+
+        const historyCard = document.querySelector(".reports-history-card");
+        if (historyCard && historyCard.scrollIntoView) {
+            historyCard.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    } catch (e) {
+        ctx.isSubmitting = false;
+        const msg = (e && e.message) ? e.message : String(e);
+        if (statusEl) {
+            if (/permission|denied|user denied/i.test(msg)) {
+                statusEl.textContent = "Location permission denied. Enable location to report this dog.";
+            } else {
+                statusEl.textContent = "Report failed. " + msg;
+            }
+        }
+        updateReportButtonState();
+    }
+}
+
+function formatIsoToLocal(iso) {
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return String(iso || "");
+        return d.toLocaleString();
+    } catch (e) {
+        return String(iso || "");
+    }
+}
+
+function severityKeyFromLabel(label) {
+    const v = String(label || "");
+    if (v === "Severe") return "severe";
+    if (v === "Moderate") return "moderate";
+    return "mild";
+}
+
+async function renderReportsHistory() {
+    const listEl = document.getElementById("reportsHistoryList");
+    const emptyEl = document.getElementById("reportsHistoryEmpty");
+    const totalEl = document.getElementById("analyticsTotalReports");
+    const severeEl = document.getElementById("analyticsSevereReports");
+    const topDiseaseEl = document.getElementById("analyticsTopDisease");
+    if (!listEl || !emptyEl) return;
+
+    try {
+        const resp = await fetch("/api/reported_dogs");
+        const data = await resp.json();
+        const reports = (data && data.reports) ? data.reports : [];
+
+        // Analytics
+        if (totalEl) totalEl.textContent = String(reports.length || 0);
+        if (severeEl) severeEl.textContent = String(reports.filter(r => r && r.severity === "Severe").length || 0);
+        if (topDiseaseEl) {
+            const counts = {};
+            for (const r of reports) {
+                const dis = Array.isArray(r.disease) ? r.disease : (r.disease ? [r.disease] : []);
+                for (const d of dis) {
+                    const k = String(d || "").trim();
+                    if (!k) continue;
+                    counts[k] = (counts[k] || 0) + 1;
+                }
+            }
+            let best = "-";
+            let bestCount = -1;
+            for (const k of Object.keys(counts)) {
+                if (counts[k] > bestCount) {
+                    best = k;
+                    bestCount = counts[k];
+                }
+            }
+            topDiseaseEl.textContent = best;
+        }
+
+        if (!reports.length) {
+            emptyEl.style.display = "block";
+            listEl.innerHTML = "";
+            return;
+        }
+
+        emptyEl.style.display = "none";
+        listEl.innerHTML = reports.slice(0, 50).map(r => {
+            const diseaseText = Array.isArray(r.disease) ? r.disease.join(", ") : (r.disease || "-");
+            const sevLabel = r.severity || "Mild";
+            const sevKey = severityKeyFromLabel(sevLabel);
+            const notes = (r.notes || "").trim();
+            const imgB64 = r.image_base64;
+            const imgMime = r.image_mime || "image/jpeg";
+            const imgHtml = (typeof imgB64 === "string" && imgB64.trim())
+                ? `<img class="report-thumb" alt="Reported dog" src="data:${escapeHtml(imgMime)};base64,${imgB64}" />`
+                : `<div class="report-thumb placeholder" aria-hidden="true">No image</div>`;
+            return `
+                <div class="report-item">
+                    <div class="report-item-grid">
+                        ${imgHtml}
+                        <div>
+                            <div class="report-item-top">
+                                <div>
+                                    <div class="report-date">${escapeHtml(formatIsoToLocal(r.createdAt))}</div>
+                                    <div class="report-disease">${escapeHtml(diseaseText)}</div>
+                                </div>
+                                <div class="severity-pill ${escapeHtml(sevKey)}">${escapeHtml(sevLabel)}</div>
+                            </div>
+                            ${notes ? `<div class="report-notes"><b>Notes:</b> ${escapeHtml(notes)}</div>` : ""}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+    } catch (e) {
+        emptyEl.style.display = "block";
+        emptyEl.textContent = "Could not load reports (check MongoDB connection).";
+        listEl.innerHTML = "";
+    }
+}
+
 function downloadCSV(results, filename) {
     if (!results || !results.length) {
         alert("No results to export.");
@@ -514,6 +780,9 @@ function uploadImage() {
 
     const dogIdInput = document.getElementById("dogIdInput");
     const dogId = dogIdInput && dogIdInput.value ? dogIdInput.value.trim() : "default";
+    const selectedFile = fileInput.files[0];
+    const reportImageMime = selectedFile && selectedFile.type ? selectedFile.type : "image/jpeg";
+    const reportImagePromise = fileToScaledJpegBase64(selectedFile).catch(() => null);
 
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
@@ -558,6 +827,8 @@ function uploadImage() {
 
         updateCareSuggestionsPanel("careSuggestionsImage", label);
         pushDiseaseMessageToChat(label);
+        setReportPredictionContext([label], severity.key, severity.label, dogId);
+        reportImagePromise.then(b64 => setReportImageContext(b64, reportImageMime));
 
         const run = {
             id: "img_" + Math.random().toString(16).slice(2) + "_" + Date.now(),
@@ -604,6 +875,13 @@ function uploadVideo() {
         const stats = computeVideoOverall(results);
         const videoSeverity = classifySeverityFromVideo(results);
         const videoDiseaseLabels = deriveDiseasesFromVideoResults(results);
+
+        setReportPredictionContext(videoDiseaseLabels, videoSeverity.key, videoSeverity.label, dogId);
+        if (unhealthyThumbs && unhealthyThumbs.length && unhealthyThumbs[0] && unhealthyThumbs[0].image_base64) {
+            setReportImageContext(unhealthyThumbs[0].image_base64, "image/jpeg");
+        } else {
+            setReportImageContext(null, "image/jpeg");
+        }
 
         // Show current run
         const videoOut = document.getElementById("videoPredictionResult");
@@ -897,8 +1175,10 @@ window.clearPredictionHistory = clearPredictionHistory;
 window.showDashboardTab = showDashboardTab;
 window.downloadCurrentVideoCSV = downloadCurrentVideoCSV;
 window.downloadStoredVideoCSV = downloadStoredVideoCSV;
+window.reportThisDog = reportThisDog;
 
 // Initial render from localStorage
 renderAllDashboards();
 showDashboardTab("image");
 initChatAssistant();
+renderReportsHistory();

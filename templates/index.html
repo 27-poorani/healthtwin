@@ -14,10 +14,8 @@
                 <h1>Dog Skin Disease Detector</h1>
             </div>
             <div class="header-right">
-                <div class="badge">
-                    <span class="badge-dot"></span>
-                    Runs in your browser (dashboard retention)
-                </div>
+                
+                <a class="header-link" href="/reports-map">Reports Map</a>
             </div>
         </div>
     </header>
@@ -87,8 +85,49 @@
                     <div id="careSuggestionsVideo" class="care-panel" style="display:none;"></div>
                 </div>
             </div>
+
+            <div class="report-row">
+                <div style="width:100%;">
+                    <label for="reportNotesInput" class="field-label">Notes (optional)</label>
+                    <textarea id="reportNotesInput" class="text-input" rows="2" placeholder="e.g. Found near street, limping, scratching a lot"></textarea>
+                </div>
+                <button id="reportThisDogBtn" class="primary-btn report-btn" type="button" onclick="reportThisDog()" disabled>
+                    Report this dog
+                </button>
+                <div id="reportStatus" class="report-status empty-state" aria-live="polite"></div>
+            </div>
         </section>
     </main>
+
+    <section class="container card dashboard-card reports-history-card">
+        <div class="dashboard-head">
+            <div>
+                <h2>Reports History</h2>
+                <p class="card-subtitle">Stored reported cases (latest first).</p>
+            </div>
+        </div>
+        <div style="padding:14px 16px 0 16px;">
+            <div class="reports-analytics">
+                <div class="reports-analytics-title">Simple Analytics</div>
+                <div class="reports-analytics-grid">
+                    <div class="metric">
+                        <div class="metric-label">Total cases reported</div>
+                        <div id="analyticsTotalReports" class="metric-value">-</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Severe cases count</div>
+                        <div id="analyticsSevereReports" class="metric-value bad">-</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Most common disease</div>
+                        <div id="analyticsTopDisease" class="metric-value">-</div>
+                    </div>
+                </div>
+            </div>
+            <div id="reportsHistoryEmpty" class="empty-state">No reports yet.</div>
+            <div id="reportsHistoryList" class="reports-list"></div>
+        </div>
+    </section>
 
     <section class="container card dashboard-card">
         <div class="dashboard-head">

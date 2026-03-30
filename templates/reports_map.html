@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reported Dogs - Map</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #reportsMap {
+            height: calc(100vh - 160px);
+            min-height: 420px;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(2,6,23,0.06);
+        }
+        .map-wrap{
+            margin-top: 16px;
+            padding-bottom: 30px;
+        }
+        .map-head{
+            display:flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .map-subtitle{
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="container header-inner">
+            <div class="header-left">
+                <h1>Reported Dogs - Map</h1>
+            </div>
+            <div class="header-right">
+                <a class="header-link" href="/">Back to Detector</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container map-wrap">
+        <div class="card dashboard-card">
+            <div class="map-head" style="padding:16px 16px 0 16px;">
+                <div>
+                    <div class="result-title" style="font-size:16px;">All reported cases</div>
+                    <div class="card-subtitle map-subtitle">Markers: Green Mild, Yellow Moderate, Red Severe</div>
+                </div>
+            </div>
+            <div style="padding:16px;">
+                <div id="reportsMap"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const severityColor = (s) => {
+            if (!s) return '#64748b';
+            const v = String(s);
+            if (v === 'Severe') return '#dc2626';
+            if (v === 'Moderate') return '#f59e0b';
+            if (v === 'Mild') return '#16a34a';
+            return '#64748b';
+        };
+
+        async function loadReports() {
+            const resp = await fetch('/api/reported_dogs');
+            const data = await resp.json();
+            return data.reports || [];
+        }
+
+        const map = L.map('reportsMap');
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        loadReports().then((reports) => {
+            const bounds = [];
+            for (const r of reports) {
+                if (r.lat == null || r.lng == null) continue;
+                const lat = Number(r.lat);
+                const lng = Number(r.lng);
+                if (!isFinite(lat) || !isFinite(lng)) continue;
+
+                const color = severityColor(r.severity);
+                const circle = L.circleMarker([lat, lng], {
+                    radius: 8,
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.85,
+                    weight: 2
+                }).addTo(map);
+
+                const diseaseText = Array.isArray(r.disease) ? r.disease.join(', ') : String(r.disease || '-');
+                const createdAt = r.createdAt ? String(r.createdAt) : '';
+                circle.bindPopup(
+                    '<div style="font-weight:900;">Severity: <b>' + (r.severity || '-') + '</b></div>' +
+                    '<div>Diseases: ' + diseaseText + '</div>' +
+                    (createdAt ? '<div style="color:#64748b;margin-top:6px;">' + createdAt + '</div>' : '')
+                );
+
+                bounds.push([lat, lng]);
+            }
+
+            if (bounds.length) {
+                map.fitBounds(bounds, { padding: [20, 20] });
+            } else {
+                map.setView([20, 0], 2);
+            }
+        }).catch((e) => {
+            map.setView([20, 0], 2);
+            const marker = L.marker([20, 0]).addTo(map);
+            marker.bindPopup('Could not load reports.');
+        });
+    </script>
+</body>
+</html>
+

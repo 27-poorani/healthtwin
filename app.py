@@ -10,6 +10,9 @@ from tensorflow.keras.preprocessing import image
 from werkzeug.utils import secure_filename
 from PIL import Image as PilImage
 
+from pymongo import MongoClient
+from bson.objectid import ObjectId
+
 app = Flask(__name__)
 
 # Load the trained model
@@ -340,6 +343,132 @@ def set_normal_baseline_video():
     cap.release()
     _persist_profile(updated_profile)
     return jsonify({"dog_id": dog_id, "frames_used": results_count, "profile": updated_profile})
+
+#
+# Reporting + Map (MongoDB)
+#
+
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
+MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "dog_skin_reports")
+MONGODB_COLLECTION_NAME = os.getenv("MONGODB_COLLECTION_NAME", "reported_dogs")
+
+def _get_reports_collection():
+    client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=3000)
+    # Force a connection test early.
+    client.admin.command("ping")
+    return client[MONGODB_DB_NAME][MONGODB_COLLECTION_NAME]
+
+def _parse_json_body():
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+@app.route("/api/report_dog", methods=["POST"])
+def report_dog():
+    """
+    Expects JSON:
+      - dog_id (optional)
+      - disease (string or list of strings)
+      - severity (Mild|Moderate|Severe)
+      - image_base64 (optional, no data URL prefix)
+      - image_mime (optional)
+      - location: { latitude, longitude, accuracy? }
+    """
+    body = _parse_json_body()
+    if not body:
+        return jsonify({"error": "Invalid JSON body"}), 400
+
+    disease = body.get("disease", "")
+    severity = body.get("severity", "")
+    dog_id = body.get("dog_id", body.get("dogId", "default"))
+
+    location = body.get("location") or {}
+    lat = location.get("latitude") if "latitude" in location else location.get("lat")
+    lng = location.get("longitude") if "longitude" in location else location.get("lng")
+    accuracy = location.get("accuracy")
+
+    if not severity or severity not in {"Mild", "Moderate", "Severe"}:
+        return jsonify({"error": "Invalid or missing severity"}), 400
+
+    # Normalize disease into list for consistency.
+    if isinstance(disease, str):
+        disease_list = [disease] if disease.strip() else []
+    elif isinstance(disease, list):
+        disease_list = [str(x).strip() for x in disease if x]
+    else:
+        disease_list = []
+
+    # Image is optional.
+    image_base64 = body.get("image_base64")
+    image_mime = body.get("image_mime") or "image/jpeg"
+    notes = body.get("notes")
+
+    doc = {
+        "dog_id": dog_id,
+        "disease": disease_list,
+        "severity": severity,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if lat is not None and lng is not None:
+        try:
+            lat_f = float(lat)
+            lng_f = float(lng)
+            doc["location_lat"] = lat_f
+            doc["location_lng"] = lng_f
+            doc["location_accuracy"] = float(accuracy) if accuracy is not None else None
+            # GeoJSON point for potential geospatial queries.
+            doc["location"] = {
+                "type": "Point",
+                "coordinates": [lng_f, lat_f],
+            }
+        except Exception:
+            # Location is best-effort; ignore if conversion fails.
+            pass
+
+    if isinstance(image_base64, str) and image_base64.strip():
+        doc["image_mime"] = image_mime
+        doc["image_base64"] = image_base64
+
+    if isinstance(notes, str) and notes.strip():
+        doc["notes"] = notes.strip()
+
+    try:
+        collection = _get_reports_collection()
+        result = collection.insert_one(doc)
+        return jsonify({"ok": True, "id": str(result.inserted_id)})
+    except Exception as e:
+        return jsonify({"error": "Could not store report in MongoDB", "details": str(e)}), 500
+
+
+@app.route("/api/reported_dogs", methods=["GET"])
+def get_reported_dogs():
+    try:
+        collection = _get_reports_collection()
+        docs = list(collection.find({}).sort("createdAt", -1).limit(500))
+    except Exception as e:
+        return jsonify({"error": "Could not load reports from MongoDB", "details": str(e)}), 500
+
+    out = []
+    for d in docs:
+        out.append(
+            {
+                "id": str(d.get("_id")),
+                "disease": d.get("disease", []),
+                "severity": d.get("severity"),
+                "lat": d.get("location_lat"),
+                "lng": d.get("location_lng"),
+                "createdAt": d.get("createdAt"),
+                "notes": d.get("notes", ""),
+                "image_base64": d.get("image_base64"),
+                "image_mime": d.get("image_mime", "image/jpeg"),
+            }
+        )
+    return jsonify({"reports": out})
+
+
+@app.route("/reports-map", methods=["GET"])
+def reports_map():
+    return render_template("reports_map.html")
 
 if __name__ == "__main__":
     app.run(debug=True)
