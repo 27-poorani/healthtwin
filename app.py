@@ -451,6 +451,7 @@ def report_dog():
         "dog_id": dog_id,
         "disease": disease_list,
         "severity": severity,
+        "emergency": severity == "Severe",
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "status": "Reported",
     }
@@ -501,6 +502,7 @@ def get_reported_dogs():
                 "id": str(d.get("_id")),
                 "disease": d.get("disease", []),
                 "severity": d.get("severity"),
+                "emergency": bool(d.get("emergency", False)),
                 "status": d.get("status", "Reported"),
                 "lat": d.get("location_lat"),
                 "lng": d.get("location_lng"),
@@ -531,6 +533,7 @@ def admin_api_reports():
                 "dog_id": d.get("dog_id", "default"),
                 "disease": d.get("disease", []),
                 "severity": d.get("severity"),
+                "emergency": bool(d.get("emergency", False)),
                 "status": d.get("status", "Reported"),
                 "lat": d.get("location_lat"),
                 "lng": d.get("location_lng"),

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - Reports</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .admin-wrap{ margin-top:16px; padding-bottom: 20px; }
         .admin-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
@@ -19,6 +20,73 @@
         .admin-danger:hover{ filter: brightness(0.98); }
         .admin-muted{ color:#64748b; font-weight: 800; font-size: 12px; }
         .admin-container{ overflow:auto; max-height: calc(100vh - 220px); border-top: 1px solid rgba(15,23,42,0.06); margin-top: 10px; }
+        .emergency-alert{
+            margin: 10px 16px 0 16px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(220,38,38,0.25);
+            background: #fee2e2;
+            color: #991b1b;
+            font-weight: 900;
+            display: none;
+        }
+        .emergency-wrap{
+            margin: 12px 16px 0 16px;
+            border: 1px solid rgba(220,38,38,0.22);
+            background: #fff5f5;
+            border-radius: 12px;
+            padding: 12px;
+            display: none;
+        }
+        .emergency-title{
+            font-size: 14px;
+            font-weight: 1000;
+            color:#991b1b;
+            margin-bottom: 10px;
+        }
+        .emergency-list{
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+        .emergency-item{
+            border: 1px solid rgba(220,38,38,0.22);
+            background:#fff;
+            border-radius: 12px;
+            padding: 10px;
+            display:grid;
+            grid-template-columns: 60px 1fr;
+            gap: 10px;
+            align-items: start;
+        }
+        .emergency-meta{ font-size: 12px; color:#475569; line-height: 1.35; font-weight: 800; }
+        .emergency-label{
+            display:inline-block;
+            margin-top: 6px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(220,38,38,0.28);
+            background: #fee2e2;
+            color:#991b1b;
+            font-size: 11px;
+            font-weight: 1000;
+        }
+        .admin-row-emergency{ background: rgba(220,38,38,0.06); }
+        .admin-analytics{ margin: 10px 16px 0 16px; border: 1px solid rgba(15,23,42,0.08); border-radius: 12px; padding: 10px; background:#fff; }
+        .admin-analytics-title{ font-weight: 1000; font-size: 13px; margin-bottom: 8px; }
+        .admin-summary-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; }
+        .admin-summary-card{ background:#f8fafc; border:1px solid rgba(15,23,42,0.06); border-radius:12px; padding:10px; }
+        .admin-summary-label{ color:#64748b; font-size:12px; font-weight:900; }
+        .admin-summary-value{ margin-top:6px; font-weight:1000; font-size:24px; line-height:1; }
+        .admin-summary-value.good{ color:#16a34a; }
+        .admin-summary-value.bad{ color:#dc2626; }
+        .admin-charts{ margin-top: 10px; display:grid; grid-template-columns: 1fr; gap:10px; }
+        .admin-chart-card{ background:#fff; border:1px solid rgba(15,23,42,0.06); border-radius:12px; padding:10px; }
+        .admin-chart-card canvas{ width:100%; max-height: 220px; }
+        @media (min-width: 900px){
+            .admin-summary-grid{ grid-template-columns: repeat(4, minmax(0,1fr)); }
+            .admin-charts{ grid-template-columns: 1fr 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -45,11 +113,56 @@
                 </div>
                 <div class="admin-actions">
                     <button id="refreshBtn" class="secondary-btn" type="button">Refresh</button>
+                    <button id="downloadCsvBtn" class="secondary-btn" type="button">Download CSV</button>
                     <div id="adminStatus" class="admin-muted"></div>
                 </div>
             </div>
 
             <div class="admin-container">
+                <div class="admin-analytics">
+                    <div class="admin-analytics-title">Summary</div>
+                    <div class="admin-summary-grid">
+                        <div class="admin-summary-card">
+                            <div class="admin-summary-label">Total reports</div>
+                            <div id="adminTotalReports" class="admin-summary-value">-</div>
+                        </div>
+                        <div class="admin-summary-card">
+                            <div class="admin-summary-label">Active cases</div>
+                            <div id="adminActiveReports" class="admin-summary-value bad">-</div>
+                        </div>
+                        <div class="admin-summary-card">
+                            <div class="admin-summary-label">In Progress</div>
+                            <div id="adminInProgressReports" class="admin-summary-value">-</div>
+                        </div>
+                        <div class="admin-summary-card">
+                            <div class="admin-summary-label">Resolved</div>
+                            <div id="adminResolvedReports" class="admin-summary-value good">-</div>
+                        </div>
+                    </div>
+                    <div class="admin-charts">
+                        <div class="admin-chart-card">
+                            <div class="admin-summary-label">Disease distribution</div>
+                            <canvas id="adminDiseaseChart"></canvas>
+                        </div>
+                        <div class="admin-chart-card">
+                            <div class="admin-summary-label">Severity distribution</div>
+                            <canvas id="adminSeverityChart"></canvas>
+                        </div>
+                        <div class="admin-chart-card">
+                            <div class="admin-summary-label">Cases by location</div>
+                            <canvas id="adminLocationChart"></canvas>
+                        </div>
+                        <div class="admin-chart-card">
+                            <div class="admin-summary-label">Reports over time</div>
+                            <canvas id="adminTrendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div id="emergencyAlert" class="emergency-alert">🚨 Emergency Case Detected</div>
+                <div id="emergencyCasesWrap" class="emergency-wrap">
+                    <div class="emergency-title">Emergency Cases</div>
+                    <div id="emergencyCasesList" class="emergency-list"></div>
+                </div>
                 <table class="admin-table">
                     <thead>
                         <tr>
@@ -83,8 +196,17 @@
         const statusEl = document.getElementById("adminStatus");
         const bodyEl = document.getElementById("adminReportsBody");
         const refreshBtn = document.getElementById("refreshBtn");
+        const downloadCsvBtn = document.getElementById("downloadCsvBtn");
+        const emergencyAlertEl = document.getElementById("emergencyAlert");
+        const emergencyCasesWrapEl = document.getElementById("emergencyCasesWrap");
+        const emergencyCasesListEl = document.getElementById("emergencyCasesList");
         const GEO_CACHE_KEY = "dogSkin.adminGeoCache.v1";
         const geoInFlight = new Map();
+        let currentReports = [];
+        let adminDiseaseChart = null;
+        let adminSeverityChart = null;
+        let adminLocationChart = null;
+        let adminTrendChart = null;
 
         function setStatus(text){ if(statusEl) statusEl.textContent = text || ""; }
 
@@ -188,6 +310,199 @@
             }
         }
 
+        function emergencyLocationText(r){
+            if(!isFinite(Number(r && r.lat)) || !isFinite(Number(r && r.lng))) return "-";
+            return "Loading...";
+        }
+
+        function renderEmergencySection(reports){
+            if(!emergencyAlertEl || !emergencyCasesWrapEl || !emergencyCasesListEl) return;
+            const emergencyReports = (reports || []).filter(r => {
+                if(!r) return false;
+                const isEmergency = (r.emergency === true || r.severity === "Severe");
+                const isResolved = String(r.status || "").trim() === "Resolved";
+                return isEmergency && !isResolved;
+            });
+            const hasEmergency = emergencyReports.length > 0;
+            emergencyAlertEl.style.display = hasEmergency ? "block" : "none";
+            emergencyCasesWrapEl.style.display = hasEmergency ? "block" : "none";
+            if(!hasEmergency){
+                emergencyCasesListEl.innerHTML = "";
+                return;
+            }
+
+            emergencyCasesListEl.innerHTML = emergencyReports.map(r => {
+                const diseaseText = Array.isArray(r.disease) ? r.disease.join(", ") : (r.disease || "-");
+                const imgB64 = r.image_base64;
+                const imgMime = r.image_mime || "image/jpeg";
+                const imgHtml = (typeof imgB64 === "string" && imgB64.trim())
+                    ? `<img class="admin-thumb" alt="Dog" src="data:${escapeHtml(imgMime)};base64,${imgB64}" />`
+                    : `<div class="admin-thumb" style="display:flex;align-items:center;justify-content:center;color:#64748b;font-weight:900;font-size:12px;">No image</div>`;
+                const hasCoords = isFinite(Number(r.lat)) && isFinite(Number(r.lng));
+                const locId = `emgLoc_${String(r.id || "").replaceAll(/[^a-zA-Z0-9_-]/g, "")}`;
+                return `
+                    <div class="emergency-item">
+                        ${imgHtml}
+                        <div class="emergency-meta">
+                            <div><b>Disease:</b> ${escapeHtml(diseaseText)}</div>
+                            <div><b>Severity:</b> ${escapeHtml(r.severity || "Severe")}</div>
+                            <div><b>Location:</b> ${hasCoords ? `<span id="${escapeHtml(locId)}" data-lat="${escapeHtml(r.lat)}" data-lng="${escapeHtml(r.lng)}">${escapeHtml(emergencyLocationText(r))}</span>` : "-"}</div>
+                            <div class="emergency-label">Emergency</div>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+            resolveAdminLocationNames(emergencyCasesListEl);
+        }
+
+        function destroyChart(c){ if(c && typeof c.destroy === "function") c.destroy(); }
+
+        function renderAdminAnalytics(reports){
+            const rows = Array.isArray(reports) ? reports : [];
+            const totalEl = document.getElementById("adminTotalReports");
+            const activeEl = document.getElementById("adminActiveReports");
+            const inProgEl = document.getElementById("adminInProgressReports");
+            const resolvedEl = document.getElementById("adminResolvedReports");
+            if(totalEl) totalEl.textContent = String(rows.length);
+            const active = rows.filter(r => String((r && r.status) || "") !== "Resolved").length;
+            const inProgress = rows.filter(r => String((r && r.status) || "") === "In Progress").length;
+            const resolved = rows.filter(r => String((r && r.status) || "") === "Resolved").length;
+            if(activeEl) activeEl.textContent = String(active);
+            if(inProgEl) inProgEl.textContent = String(inProgress);
+            if(resolvedEl) resolvedEl.textContent = String(resolved);
+
+            if(typeof Chart === "undefined") return;
+            const diseaseCtx = document.getElementById("adminDiseaseChart");
+            const severityCtx = document.getElementById("adminSeverityChart");
+            const locationCtx = document.getElementById("adminLocationChart");
+            const trendCtx = document.getElementById("adminTrendChart");
+            if(!diseaseCtx || !severityCtx || !locationCtx || !trendCtx) return;
+
+            const diseaseCounts = {};
+            for(const r of rows){
+                const diseases = Array.isArray(r.disease) ? r.disease : (r.disease ? [r.disease] : []);
+                for(const d of diseases){
+                    const k = String(d || "Unknown").trim() || "Unknown";
+                    diseaseCounts[k] = (diseaseCounts[k] || 0) + 1;
+                }
+            }
+            const diseaseLabels = Object.keys(diseaseCounts);
+            const diseaseValues = diseaseLabels.map(k => diseaseCounts[k]);
+
+            const severityCounts = { Mild: 0, Moderate: 0, Severe: 0 };
+            for(const r of rows){
+                const s = String((r && r.severity) || "Mild");
+                if(s === "Moderate") severityCounts.Moderate++;
+                else if(s === "Severe") severityCounts.Severe++;
+                else severityCounts.Mild++;
+            }
+
+            const locationCounts = {};
+            for(const r of rows){
+                const lat = roundCoord(r && r.lat);
+                const lng = roundCoord(r && r.lng);
+                if(lat === null || lng === null) continue;
+                const key = `${lat},${lng}`;
+                locationCounts[key] = (locationCounts[key] || 0) + 1;
+            }
+            const locLabels = Object.keys(locationCounts);
+            const locValues = locLabels.map(k => locationCounts[k]);
+
+            const trendCounts = {};
+            for(const r of rows){
+                const iso = r && r.createdAt;
+                if(!iso) continue;
+                const d = new Date(iso);
+                if(isNaN(d.getTime())) continue;
+                const k = d.toISOString().slice(0,10);
+                trendCounts[k] = (trendCounts[k] || 0) + 1;
+            }
+            const trendLabels = Object.keys(trendCounts).sort();
+            const trendValues = trendLabels.map(k => trendCounts[k]);
+
+            destroyChart(adminDiseaseChart);
+            destroyChart(adminSeverityChart);
+            destroyChart(adminLocationChart);
+            destroyChart(adminTrendChart);
+
+            if(diseaseLabels.length){
+                adminDiseaseChart = new Chart(diseaseCtx, {
+                    type: "pie",
+                    data: {
+                        labels: diseaseLabels,
+                        datasets: [{ data: diseaseValues, backgroundColor: ["#22c55e","#3b82f6","#f97316","#e11d48","#6366f1","#14b8a6"] }]
+                    },
+                    options: { plugins: { legend: { position: "bottom" } } }
+                });
+            }
+
+            adminSeverityChart = new Chart(severityCtx, {
+                type: "bar",
+                data: {
+                    labels: ["Mild","Moderate","Severe"],
+                    datasets: [{ data: [severityCounts.Mild, severityCounts.Moderate, severityCounts.Severe], backgroundColor: ["#22c55e","#eab308","#ef4444"] }]
+                },
+                options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+            });
+
+            if(locLabels.length){
+                adminLocationChart = new Chart(locationCtx, {
+                    type: "bar",
+                    data: { labels: locLabels, datasets: [{ data: locValues, backgroundColor: "#3b82f6" }] },
+                    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+                });
+            }
+
+            if(trendLabels.length){
+                adminTrendChart = new Chart(trendCtx, {
+                    type: "line",
+                    data: { labels: trendLabels, datasets: [{ data: trendValues, borderColor: "#0b5ed7", backgroundColor: "rgba(59,130,246,0.18)", fill: true, tension: 0.25 }] },
+                    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+                });
+            }
+        }
+
+        function toCsvCell(v){
+            const s = (v === null || v === undefined) ? "" : String(v);
+            if(/[",\n]/.test(s)) return '"' + s.replaceAll('"', '""') + '"';
+            return s;
+        }
+
+        function downloadReportsCsv(reports){
+            const rows = Array.isArray(reports) ? reports : [];
+            if(!rows.length){
+                setStatus("No reports to download.");
+                return;
+            }
+            const headers = ["id","date","dog_id","disease","severity","status","emergency","lat","lng","notes"];
+            const lines = rows.map(r => {
+                const diseaseText = Array.isArray(r.disease) ? r.disease.join(", ") : (r.disease || "");
+                return [
+                    toCsvCell(r.id),
+                    toCsvCell(r.createdAt),
+                    toCsvCell(r.dog_id || "default"),
+                    toCsvCell(diseaseText),
+                    toCsvCell(r.severity || ""),
+                    toCsvCell(r.status || "Reported"),
+                    toCsvCell((r.emergency === true || r.severity === "Severe") ? "true" : "false"),
+                    toCsvCell(r.lat),
+                    toCsvCell(r.lng),
+                    toCsvCell(r.notes || ""),
+                ].join(",");
+            });
+            const csv = [headers.join(","), ...lines].join("\n");
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `admin_reports_${Date.now()}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            setStatus("CSV downloaded.");
+        }
+
         async function updateStatus(id, nextStatus){
             const resp = await fetch(`/api/admin/reports/${id}/status`, {
                 method: "POST",
@@ -219,14 +534,18 @@
                 const status = r.status || "Reported";
                 const hasCoords = isFinite(Number(r.lat)) && isFinite(Number(r.lng));
                 const locId = `adminLoc_${String(r.id || "").replaceAll(/[^a-zA-Z0-9_-]/g, "")}`;
+                const isEmergency = Boolean(r && (r.emergency === true || r.severity === "Severe"));
                 return `
-                    <tr data-id="${escapeHtml(r.id)}">
+                    <tr data-id="${escapeHtml(r.id)}" class="${isEmergency ? "admin-row-emergency" : ""}">
                         <td>${imgHtml}</td>
                         <td>${escapeHtml(formatDate(r.createdAt))}</td>
                         <td>${escapeHtml(r.dog_id || "default")}</td>
                         <td>${hasCoords ? `<span id="${escapeHtml(locId)}" data-lat="${escapeHtml(r.lat)}" data-lng="${escapeHtml(r.lng)}">Loading...</span>` : "-"}</td>
                         <td>${escapeHtml(diseaseText)}</td>
-                        <td><span class="severity-pill ${escapeHtml(sevKey)}" style="padding:4px 10px;">${escapeHtml(sevLabel)}</span></td>
+                        <td>
+                            <span class="severity-pill ${escapeHtml(sevKey)}" style="padding:4px 10px;">${escapeHtml(sevLabel)}</span>
+                            ${isEmergency ? `<span class="emergency-label" style="margin-left:6px;">Emergency</span>` : ""}
+                        </td>
                         <td>
                             <select class="admin-select" data-action="status">
                                 ${["Reported","In Progress","Resolved"].map(s => `<option value="${s}" ${s===status?"selected":""}>${s}</option>`).join("")}
@@ -240,11 +559,14 @@
                 `;
             }).join("");
             resolveAdminLocationNames(bodyEl);
+            renderEmergencySection(reports);
+            renderAdminAnalytics(reports);
         }
 
         async function refresh(){
             try{
                 const reports = await loadReports();
+                currentReports = reports;
                 render(reports);
                 setStatus(`Loaded ${reports.length} reports`);
             }catch(e){
@@ -253,6 +575,7 @@
         }
 
         refreshBtn && refreshBtn.addEventListener("click", refresh);
+        downloadCsvBtn && downloadCsvBtn.addEventListener("click", () => downloadReportsCsv(currentReports));
 
         bodyEl && bodyEl.addEventListener("change", async (e) => {
             const sel = e.target;
@@ -265,6 +588,7 @@
             try{
                 await updateStatus(id, next);
                 setStatus("Status updated.");
+                await refresh();
             }catch(err){
                 setStatus(`Error: ${err.message || err}`);
             }
@@ -280,8 +604,8 @@
             setStatus("Deleting...");
             try{
                 await deleteReport(id);
-                tr.remove();
                 setStatus("Deleted.");
+                await refresh();
             }catch(err){
                 setStatus(`Error: ${err.message || err}`);
             }

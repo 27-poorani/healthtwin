@@ -283,22 +283,28 @@ function updateCareSuggestionsPanel(panelId, diseaseLabels) {
     const contagiousClass = contagious === "Yes" ? "yes" : "no";
 
     const stepsLi = mergedSteps.map(s => `<li>${escapeHtml(s)}</li>`).join("");
+    const callNowHtml = vetLevel === "Urgent"
+        ? `<div class="care-action-row"><a class="call-now-btn" href="tel:108">🚨 Call Now</a></div>`
+        : "";
 
     el.innerHTML = `
-        <div class="care-head">
-            <div>
-                <div class="care-title">Care Suggestions</div>
-                <div class="care-disease">This looks like ${escapeHtml(displayDisease || "-")}</div>
+        <div class="result-card">
+            <div class="care-head">
+                <div>
+                    <div class="care-title">🐕 Care Suggestions</div>
+                    <div class="care-disease">Detected: ${escapeHtml(displayDisease || "-")}</div>
+                </div>
+                <div class="care-badges">
+                    <div class="care-badge ${vetClass}">Vet: ${escapeHtml(vetLevel)}</div>
+                    <div class="care-badge ${contagiousClass}">Contagious: ${escapeHtml(contagious)}</div>
+                </div>
             </div>
-            <div class="care-badges">
-                <div class="care-badge ${vetClass}">Vet: ${escapeHtml(vetLevel)}</div>
-                <div class="care-badge ${contagiousClass}">Contagious: ${escapeHtml(contagious)}</div>
-            </div>
-        </div>
 
-        <div class="care-section">
-            <div class="care-section-title">Immediate care steps</div>
-            <ul class="care-steps">${stepsLi}</ul>
+            <div class="care-section">
+                <div class="care-section-title">Immediate care steps</div>
+                <ul class="care-steps">${stepsLi}</ul>
+            </div>
+            ${callNowHtml}
         </div>
     `;
 
@@ -350,13 +356,29 @@ function setReportImageContext(imageBase64, imageMime) {
     updateReportButtonState();
 }
 
+function reportDogFromUnhealthyThumb(index) {
+    const thumbs = window.__currentUnhealthyThumbsForReport || [];
+    const t = thumbs[Number(index)];
+    if (!t) {
+        alert("Could not find this frame to report.");
+        return;
+    }
+    const threshold = Number(window.__currentVideoThresholdForReport);
+    const dogId = window.__currentVideoDogIdForReport || "default";
+    const sev = classifySeverityFromHealthyProb(t.healthy_probability, threshold, "Unhealthy");
+    const disease = t.predicted_label || "Unhealthy";
+
+    setReportPredictionContext([disease], sev.key, sev.label, dogId);
+    setReportImageContext(t.image_base64 || null, "image/jpeg");
+    reportThisDog();
+}
+
 function updateReportButtonState() {
     const btn = document.getElementById("reportThisDogBtn");
     const statusEl = document.getElementById("reportStatus");
-    if (!btn) return;
     const ctx = window.__reportContext || {};
     const ready = !!(ctx.predictionReady && ctx.imageReady);
-    btn.disabled = !ready;
+    if (btn) btn.disabled = !ready;
 
     if (!statusEl) return;
 
@@ -523,6 +545,145 @@ function reportStatusKeyFromLabel(label) {
     return "reported";
 }
 
+let _diseaseChart = null;
+let _severityChart = null;
+let _locationChart = null;
+let _trendChart = null;
+
+function _destroyIfChart(c) {
+    if (c && typeof c.destroy === "function") c.destroy();
+}
+
+function buildReportsCharts(reports) {
+    if (typeof Chart === "undefined") return;
+    const diseaseCtx = document.getElementById("diseaseChart");
+    const severityCtx = document.getElementById("severityChart");
+    const locationCtx = document.getElementById("locationChart");
+    const trendCtx = document.getElementById("trendChart");
+    if (!diseaseCtx || !severityCtx || !locationCtx || !trendCtx) return;
+
+    const safeReports = Array.isArray(reports) ? reports : [];
+
+    // Disease distribution
+    const diseaseCounts = {};
+    for (const r of safeReports) {
+        const dis = Array.isArray(r.disease) ? r.disease : (r.disease ? [r.disease] : []);
+        for (const d of dis) {
+            const key = String(d || "Unknown").trim() || "Unknown";
+            diseaseCounts[key] = (diseaseCounts[key] || 0) + 1;
+        }
+    }
+    const diseaseLabels = Object.keys(diseaseCounts);
+    const diseaseValues = diseaseLabels.map(k => diseaseCounts[k]);
+
+    // Severity distribution
+    const severityCounts = { Mild: 0, Moderate: 0, Severe: 0 };
+    for (const r of safeReports) {
+        const sev = String(r.severity || "Mild");
+        if (sev === "Moderate") severityCounts.Moderate++;
+        else if (sev === "Severe") severityCounts.Severe++;
+        else severityCounts.Mild++;
+    }
+
+    // Location-based cases (bucketed by rounded lat/lng)
+    const locationCounts = {};
+    for (const r of safeReports) {
+        if (r.lat == null || r.lng == null) continue;
+        const latR = _roundCoord(r.lat);
+        const lngR = _roundCoord(r.lng);
+        if (latR === null || lngR === null) continue;
+        const key = `${latR},${lngR}`;
+        locationCounts[key] = (locationCounts[key] || 0) + 1;
+    }
+    const locLabels = Object.keys(locationCounts);
+    const locValues = locLabels.map(k => locationCounts[k]);
+
+    // Trend over time (by date)
+    const trendCounts = {};
+    for (const r of safeReports) {
+        const iso = r.createdAt;
+        if (!iso) continue;
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) continue;
+        const key = d.toISOString().slice(0, 10);
+        trendCounts[key] = (trendCounts[key] || 0) + 1;
+    }
+    const trendLabels = Object.keys(trendCounts).sort();
+    const trendValues = trendLabels.map(k => trendCounts[k]);
+
+    _destroyIfChart(_diseaseChart);
+    _destroyIfChart(_severityChart);
+    _destroyIfChart(_locationChart);
+    _destroyIfChart(_trendChart);
+
+    if (diseaseLabels.length) {
+        _diseaseChart = new Chart(diseaseCtx, {
+            type: "pie",
+            data: {
+                labels: diseaseLabels,
+                datasets: [{
+                    data: diseaseValues,
+                    backgroundColor: ["#22c55e","#3b82f6","#f97316","#e11d48","#6366f1","#14b8a6"],
+                }],
+            },
+            options: {
+                plugins: { legend: { position: "bottom" } },
+            },
+        });
+    }
+
+    _severityChart = new Chart(severityCtx, {
+        type: "bar",
+        data: {
+            labels: ["Mild","Moderate","Severe"],
+            datasets: [{
+                data: [severityCounts.Mild, severityCounts.Moderate, severityCounts.Severe],
+                backgroundColor: ["#22c55e","#eab308","#ef4444"],
+            }],
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision:0 } } },
+        },
+    });
+
+    if (locLabels.length) {
+        _locationChart = new Chart(locationCtx, {
+            type: "bar",
+            data: {
+                labels: locLabels,
+                datasets: [{
+                    data: locValues,
+                    backgroundColor: "#3b82f6",
+                }],
+            },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision:0 } } },
+            },
+        });
+    }
+
+    if (trendLabels.length) {
+        _trendChart = new Chart(trendCtx, {
+            type: "line",
+            data: {
+                labels: trendLabels,
+                datasets: [{
+                    data: trendValues,
+                    borderColor: "#0b5ed7",
+                    backgroundColor: "rgba(59,130,246,0.18)",
+                    fill: true,
+                    tension: 0.25,
+                }],
+            },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision:0 } } },
+            },
+        });
+    }
+}
 async function renderReportsHistory() {
     const listEl = document.getElementById("reportsHistoryList");
     const emptyEl = document.getElementById("reportsHistoryEmpty");
@@ -536,38 +697,27 @@ async function renderReportsHistory() {
         const data = await resp.json();
         const reports = (data && data.reports) ? data.reports : [];
 
-        // Analytics
+        // Summary analytics
         if (totalEl) totalEl.textContent = String(reports.length || 0);
-        if (severeEl) severeEl.textContent = String(reports.filter(r => r && r.severity === "Severe").length || 0);
-        if (topDiseaseEl) {
-            const counts = {};
-            for (const r of reports) {
-                const dis = Array.isArray(r.disease) ? r.disease : (r.disease ? [r.disease] : []);
-                for (const d of dis) {
-                    const k = String(d || "").trim();
-                    if (!k) continue;
-                    counts[k] = (counts[k] || 0) + 1;
-                }
-            }
-            let best = "-";
-            let bestCount = -1;
-            for (const k of Object.keys(counts)) {
-                if (counts[k] > bestCount) {
-                    best = k;
-                    bestCount = counts[k];
-                }
-            }
-            topDiseaseEl.textContent = best;
-        }
+        const active = reports.filter(r => r && String(r.status || "") !== "Resolved").length;
+        const inProgress = reports.filter(r => r && String(r.status || "") === "In Progress").length;
+        const resolved = reports.filter(r => r && String(r.status || "") === "Resolved").length;
+        const activeEl = document.getElementById("analyticsActiveReports");
+        const inProgEl = document.getElementById("analyticsInProgressReports");
+        const resolvedEl = document.getElementById("analyticsResolvedReports");
+        if (activeEl) activeEl.textContent = String(active || 0);
+        if (inProgEl) inProgEl.textContent = String(inProgress || 0);
+        if (resolvedEl) resolvedEl.textContent = String(resolved || 0);
 
         if (!reports.length) {
             emptyEl.style.display = "block";
             listEl.innerHTML = "";
+            buildReportsCharts([]);
             return;
         }
 
         emptyEl.style.display = "none";
-        listEl.innerHTML = reports.slice(0, 50).map(r => {
+        listEl.innerHTML = reports.slice(0, 5).map(r => {
             const diseaseText = Array.isArray(r.disease) ? r.disease.join(", ") : (r.disease || "-");
             const sevLabel = r.severity || "Mild";
             const sevKey = severityKeyFromLabel(sevLabel);
@@ -590,7 +740,7 @@ async function renderReportsHistory() {
                                 <div>
                                     <div class="report-date">${escapeHtml(formatIsoToLocal(r.createdAt))}</div>
                                     <div class="report-disease">${escapeHtml(diseaseText)}</div>
-                                    ${hasCoords ? `<div class="report-location"><b>Location:</b> <span id="${escapeHtml(locId)}" data-lat="${escapeHtml(r.lat)}" data-lng="${escapeHtml(r.lng)}">Loading…</span></div>` : ""}
+                                    ${hasCoords ? `<div class="report-location">📍 <b>Location:</b> <span id="${escapeHtml(locId)}" data-lat="${escapeHtml(r.lat)}" data-lng="${escapeHtml(r.lng)}">Loading...</span></div>` : ""}
                                 </div>
                                 <div class="report-pills">
                                     <div class="report-status-pill ${escapeHtml(statusKey)}">${escapeHtml(statusLabel)}</div>
@@ -606,6 +756,7 @@ async function renderReportsHistory() {
 
         // After rendering, resolve human-readable location names (best-effort).
         resolveReportLocationNames(listEl);
+        buildReportsCharts(reports);
     } catch (e) {
         emptyEl.style.display = "block";
         emptyEl.textContent = "Could not load reports (check MongoDB connection).";
@@ -979,14 +1130,15 @@ function uploadImage() {
         const out = document.getElementById("predictionResult");
         if (out) {
             out.innerHTML =
-                `<div class="result-head">
+                `<div class="result-card">
+                <div class="result-head">
                     <div>
-                        <div class="result-title">Image Result</div>
+                        <div class="result-title">🐕 Image Result</div>
                         <div class="card-subtitle">Predicted class: ${escapeHtml(label)}</div>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
                         <div class="severity-pill ${escapeHtml(severity.key)}">${escapeHtml(severity.label)}</div>
-                        <div class="result-badge ${health === "Healthy" ? "good" : "bad"}">${escapeHtml(health)}</div>
+                        <div class="result-badge ${health === "Healthy" ? "good" : "bad"}">${health === "Healthy" ? "Healthy" : "🚨 Unhealthy"}</div>
                     </div>
                 </div>
                 <div class="result-grid">
@@ -998,6 +1150,10 @@ function uploadImage() {
                         <div class="result-label">Baseline Threshold</div>
                         <div class="result-value">${isFinite(threshold) ? threshold.toFixed(6) : "-"}</div>
                     </div>
+                </div>
+                <div class="care-action-row" style="margin-top:10px;">
+                    <button id="reportThisDogBtn" class="primary-btn" type="button" onclick="reportThisDog()" disabled>🐕 Report this dog</button>
+                </div>
                 </div>`;
         }
 
@@ -1047,6 +1203,9 @@ function uploadVideo() {
         const results = data.results || [];
         const unhealthyThumbs = data.unhealthy_thumbnails || [];
         const threshold = Number(data.baseline_threshold);
+        window.__currentUnhealthyThumbsForReport = unhealthyThumbs;
+        window.__currentVideoThresholdForReport = threshold;
+        window.__currentVideoDogIdForReport = dogId;
         const avgHealthyScore = clampScore01(data.average_healthy_score, 0.5);
         updateHealthyReferenceProfile(dogId, avgHealthyScore);
 
@@ -1080,14 +1239,15 @@ function uploadVideo() {
             }));
 
             videoOut.innerHTML =
-                `<div class="result-head">
+                `<div class="result-card">
+                <div class="result-head">
                     <div>
-                        <div class="result-title">Video Result</div>
+                        <div class="result-title">🐕 Video Result</div>
                         <div class="card-subtitle">Frame extraction: every 1 second</div>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
                         <div class="severity-pill ${escapeHtml(videoSeverity.key)}">${escapeHtml(videoSeverity.label)}</div>
-                        <div class="result-badge ${stats.overall === "Healthy" ? "good" : "bad"}">${escapeHtml(stats.overall)}</div>
+                        <div class="result-badge ${stats.overall === "Healthy" ? "good" : "bad"}">${stats.overall === "Healthy" ? "Healthy" : "🚨 Unhealthy"}</div>
                     </div>
                 </div>
                 <div class="result-grid">
@@ -1111,7 +1271,8 @@ function uploadVideo() {
                 <details class="details">
                     <summary class="details-summary">Preview first ${preview.length} frames</summary>
                     <pre class="details-pre">${escapeHtml(JSON.stringify(preview, null, 2))}</pre>
-                </details>`;
+                </details>
+                </div>`;
         }
 
         updateCareSuggestionsPanel("careSuggestionsVideo", videoDiseaseLabels);
@@ -1124,8 +1285,8 @@ function uploadVideo() {
                 gallery.innerHTML = `<div class="empty-state">No Unhealthy frames found in the sampled intervals.</div>`;
             } else {
                 gallery.innerHTML =
-                    `<div class="gallery-title">Unhealthy Frame Images</div>` +
-                    unhealthyThumbs.map(t => {
+                    `<div class="gallery-title">🚨 Unhealthy Frame Images</div>` +
+                    unhealthyThumbs.map((t, idx) => {
                         const imgSrc = `data:image/jpeg;base64,${t.image_base64}`;
                         const sev = classifySeverityFromHealthyProb(t.healthy_probability, threshold, "Unhealthy");
                         return `
@@ -1137,6 +1298,9 @@ function uploadVideo() {
                                     Disease: ${escapeHtml(t.predicted_label || "-")}
                                     <br />
                                     Severity: <span class="severity-pill ${escapeHtml(sev.key)}" style="padding:4px 8px; font-size:11px;">${escapeHtml(sev.label)}</span>
+                                    <div style="margin-top:8px;">
+                                        <button class="primary-btn" style="padding:7px 12px; font-size:12px;" onclick="reportDogFromUnhealthyThumb(${idx})">🐕 Report this dog</button>
+                                    </div>
                                 </div>
                                 
                             </div>
@@ -1362,6 +1526,7 @@ window.showDashboardTab = showDashboardTab;
 window.downloadCurrentVideoCSV = downloadCurrentVideoCSV;
 window.downloadStoredVideoCSV = downloadStoredVideoCSV;
 window.reportThisDog = reportThisDog;
+window.reportDogFromUnhealthyThumb = reportDogFromUnhealthyThumb;
 
 // Initial render from localStorage
 renderAllDashboards();

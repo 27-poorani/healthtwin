@@ -11,11 +11,11 @@
     <header class="app-header">
         <div class="container header-inner">
             <div class="header-left">
-                <h1>Dog Skin Disease Detector</h1>
+                <h1>🐕 Dog Skin Disease Detector</h1>
             </div>
             <div class="header-right">
                 
-                <a class="header-link" href="/reports-map">Reports Map</a>
+                <a class="header-link" href="/reports-map">📍 Reports Map</a>
                 <a class="header-link" href="/admin/login">Admin Login</a>
             </div>
         </div>
@@ -87,7 +87,7 @@
                     </div>
                     <div class="upload-box">
                         <input type="file" id="fileInput" accept="image/*">
-                        <button class="primary-btn" onclick="uploadImage()">Analyze Image</button>
+                        <button class="primary-btn" onclick="uploadImage()">Analyze</button>
                     </div>
                     <div id="predictionResult" class="result-area"></div>
                     <div id="careSuggestionsImage" class="care-panel" style="display:none;"></div>
@@ -99,7 +99,7 @@
                     </div>
                     <div class="upload-box">
                         <input type="file" id="videoInput" accept="video/*">
-                        <button class="primary-btn" onclick="uploadVideo()">Analyze Video</button>
+                        <button class="primary-btn" onclick="uploadVideo()">Analyze</button>
                     </div>
                     <div id="videoPredictionResult" class="result-area"></div>
                     <div id="videoDownloadArea" class="result-area"></div>
@@ -113,9 +113,6 @@
                     <label for="reportNotesInput" class="field-label">Notes (optional)</label>
                     <textarea id="reportNotesInput" class="text-input" rows="2" placeholder="e.g. Found near street, limping, scratching a lot"></textarea>
                 </div>
-                <button id="reportThisDogBtn" class="primary-btn report-btn" type="button" onclick="reportThisDog()" disabled>
-                    Report this dog
-                </button>
                 <div id="reportStatus" class="report-status empty-state" aria-live="polite"></div>
             </div>
         </section>
@@ -124,28 +121,33 @@
     <section class="container card dashboard-card reports-history-card">
         <div class="dashboard-head">
             <div>
-                <h2>Reports History</h2>
+                <h2>📍 Reports History</h2>
                 <p class="card-subtitle">Stored reported cases (latest first).</p>
             </div>
         </div>
         <div style="padding:14px 16px 0 16px;">
             <div class="reports-analytics">
-                <div class="reports-analytics-title">Simple Analytics</div>
+                <div class="reports-analytics-title">Summary</div>
                 <div class="reports-analytics-grid">
                     <div class="metric">
-                        <div class="metric-label">Total cases reported</div>
+                        <div class="metric-label">Total reports</div>
                         <div id="analyticsTotalReports" class="metric-value">-</div>
                     </div>
                     <div class="metric">
-                        <div class="metric-label">Severe cases count</div>
-                        <div id="analyticsSevereReports" class="metric-value bad">-</div>
+                        <div class="metric-label">Active cases</div>
+                        <div id="analyticsActiveReports" class="metric-value bad">-</div>
                     </div>
                     <div class="metric">
-                        <div class="metric-label">Most common disease</div>
-                        <div id="analyticsTopDisease" class="metric-value">-</div>
+                        <div class="metric-label">In Progress</div>
+                        <div id="analyticsInProgressReports" class="metric-value">-</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Resolved</div>
+                        <div id="analyticsResolvedReports" class="metric-value good">-</div>
                     </div>
                 </div>
             </div>
+
             <div id="reportsHistoryEmpty" class="empty-state">No reports yet.</div>
             <div id="reportsHistoryList" class="reports-list"></div>
         </div>
