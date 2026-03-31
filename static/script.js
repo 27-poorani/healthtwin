@@ -494,6 +494,7 @@ async function reportThisDog() {
         }
 
         if (statusEl) statusEl.textContent = "Thanks! Report submitted. See it in Reports History / Map.";
+        alert("Reported!");
         if (notesInput) notesInput.value = "";
         renderReportsHistory();
 

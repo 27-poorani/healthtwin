@@ -157,9 +157,21 @@ def predict_frame(frame_bgr: np.ndarray) -> tuple[str, np.ndarray]:
     pil_img = PilImage.fromarray(frame_rgb).resize((224, 224))
     return predict_image_from_pil(pil_img)
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/", methods=["GET"])
 def index():
+    return redirect(url_for("detect"))
+
+@app.route("/detect", methods=["GET"])
+def detect():
     return render_template("index.html")
+
+@app.route("/reports-history", methods=["GET"])
+def reports_history():
+    return render_template("reports_history.html")
+
+@app.route("/prediction-dashboard", methods=["GET"])
+def prediction_dashboard():
+    return render_template("prediction_dashboard.html")
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -406,6 +418,13 @@ def admin_reports():
     if gate is not None:
         return gate
     return render_template("admin_reports.html")
+
+@app.route("/admin/cases", methods=["GET"])
+def admin_cases():
+    gate = _require_admin()
+    if gate is not None:
+        return gate
+    return render_template("admin_cases.html")
 
 @app.route("/api/report_dog", methods=["POST"])
 def report_dog():

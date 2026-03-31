@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports History | Dog Skin Disease Detector</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+<body>
+    <div class="admin-layout">
+        <aside class="sidebar">
+            <h2>Dog Skin Detector</h2>
+            <nav>
+                <a href="/detect" class="nav-link">1️⃣ Detect Disease</a>
+                <a href="/reports-history" class="nav-link active">2️⃣ Reports History</a>
+                <a href="/reports-map" class="nav-link">3️⃣ Reports Map</a>
+                <a href="/prediction-dashboard" class="nav-link">4️⃣ Prediction Dashboard</a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="app-header" style="margin-bottom: 16px;">
+                <div class="container header-inner" style="padding: 0;">
+                    <div class="header-left">
+                        <h1>Reports History</h1>
+                        <p class="header-subtitle">All reported cases are shown here (latest first).</p>
+                    </div>
+                    <div class="header-right">
+                        <a class="header-link" href="/detect">Detect Disease</a>
+                        <a class="header-link" href="/reports-map">Reports Map</a>
+                        <a class="header-link" href="/prediction-dashboard">Prediction Dashboard</a>
+                    </div>
+                </div>
+            </header>
+
+            <section class="card dashboard-card reports-history-card">
+                <div class="dashboard-head">
+                    <div>
+                        <h2>📍 Reports History</h2>
+                        <p class="card-subtitle">Stored reported cases (latest first).</p>
+                    </div>
+                </div>
+
+                <div style="padding:14px 16px 0 16px;">
+                    <div class="reports-analytics">
+                        <div class="reports-analytics-title">Summary</div>
+                        <div class="reports-analytics-grid">
+                            <div class="metric"><div class="metric-label">Total reports</div><div id="analyticsTotalReports" class="metric-value">-</div></div>
+                            <div class="metric"><div class="metric-label">Active cases</div><div id="analyticsActiveReports" class="metric-value bad">-</div></div>
+                            <div class="metric"><div class="metric-label">In Progress</div><div id="analyticsInProgressReports" class="metric-value">-</div></div>
+                            <div class="metric"><div class="metric-label">Resolved</div><div id="analyticsResolvedReports" class="metric-value good">-</div></div>
+                        </div>
+                    </div>
+
+                    <div id="reportsHistoryEmpty" class="empty-state">No reports yet.</div>
+                    <div id="reportsHistoryList" class="reports-list"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

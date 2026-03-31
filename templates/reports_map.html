@@ -31,30 +31,47 @@
     </style>
 </head>
 <body>
-    <header class="app-header">
-        <div class="container header-inner">
-            <div class="header-left">
-                <h1>Reported Dogs - Map</h1>
-            </div>
-            <div class="header-right">
-                <a class="header-link" href="/">Back to Detector</a>
-            </div>
-        </div>
-    </header>
+    <div class="admin-layout">
+        <aside class="sidebar">
+            <h2>Dog Skin Detector</h2>
+            <nav>
+                <a href="/detect" class="nav-link">1️⃣ Detect Disease</a>
+                <a href="/reports-history" class="nav-link">2️⃣ Reports History</a>
+                <a href="/reports-map" class="nav-link active">3️⃣ Reports Map</a>
+                <a href="/prediction-dashboard" class="nav-link">4️⃣ Prediction Dashboard</a>
+            </nav>
+        </aside>
 
-    <main class="container map-wrap">
-        <div class="card dashboard-card">
-            <div class="map-head" style="padding:16px 16px 0 16px;">
-                <div>
-                    <div class="result-title" style="font-size:16px;">All reported cases</div>
-                    <div class="card-subtitle map-subtitle">Markers: Green Mild, Yellow Moderate, Red Severe</div>
+        <main class="main-content">
+            <header class="app-header" style="margin-bottom: 16px;">
+                <div class="container header-inner" style="padding: 0;">
+                    <div class="header-left">
+                        <h1>Reports Map</h1>
+                        <p class="header-subtitle">Interactive map of all reported cases.</p>
+                    </div>
+                    <div class="header-right">
+                        <a class="header-link" href="/detect">Detect Disease</a>
+                        <a class="header-link" href="/reports-history">Reports History</a>
+                        <a class="header-link" href="/prediction-dashboard">Prediction Dashboard</a>
+                    </div>
                 </div>
-            </div>
-            <div style="padding:16px;">
-                <div id="reportsMap"></div>
-            </div>
-        </div>
-    </main>
+            </header>
+
+            <main class="container map-wrap">
+                <div class="card dashboard-card">
+                    <div class="map-head" style="padding:16px 16px 0 16px;">
+                        <div>
+                            <div class="result-title" style="font-size:16px;">All reported cases</div>
+                            <div class="card-subtitle map-subtitle">Markers: Green Mild, Yellow Moderate, Red Severe</div>
+                        </div>
+                    </div>
+                    <div style="padding:16px;">
+                        <div id="reportsMap"></div>
+                    </div>
+                </div>
+            </main>
+        </main>
+    </div>
 
     <script>
         const severityColor = (s) => {

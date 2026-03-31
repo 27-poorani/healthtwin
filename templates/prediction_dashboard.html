@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prediction Dashboard | Dog Skin Disease Detector</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+<body>
+    <div class="admin-layout">
+        <aside class="sidebar">
+            <h2>Dog Skin Detector</h2>
+            <nav>
+                <a href="/detect" class="nav-link">1️⃣ Detect Disease</a>
+                <a href="/reports-history" class="nav-link">2️⃣ Reports History</a>
+                <a href="/reports-map" class="nav-link">3️⃣ Reports Map</a>
+                <a href="/prediction-dashboard" class="nav-link active">4️⃣ Prediction Dashboard</a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="app-header" style="margin-bottom: 16px;">
+                <div class="container header-inner" style="padding: 0;">
+                    <div class="header-left">
+                        <h1>Prediction Dashboard</h1>
+                        <p class="header-subtitle">Detected dogs and their latest statuses are retained in this browser.</p>
+                    </div>
+                    <div class="header-right">
+                        <a class="header-link" href="/detect">Detect Disease</a>
+                        <a class="header-link" href="/reports-history">Reports History</a>
+                        <a class="header-link" href="/reports-map">Reports Map</a>
+                    </div>
+                </div>
+            </header>
+
+            <section class="card dashboard-card">
+                <div class="dashboard-head">
+                    <div>
+                        <h2>Prediction Dashboard</h2>
+                        <p class="card-subtitle">Detected dogs and their latest statuses are retained in this browser.</p>
+                    </div>
+                    <div class="dashboard-actions">
+                        <button class="secondary-btn" onclick="clearPredictionHistory()">Clear History</button>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card doglist-card">
+                        <div class="doglist-title"><h3>Detected Dogs (Latest Status)</h3></div>
+                        <div id="dogStatusEmpty" class="empty-state">No detected dogs yet.</div>
+                        <div id="dogStatusList" class="dog-status-list"></div>
+                    </div>
+
+                    <div class="runs-card-wrap">
+                        <div class="tabs" role="tablist" aria-label="Prediction type">
+                            <button id="tabImageRuns" class="tab-btn active" onclick="showDashboardTab('image')">Image</button>
+                            <button id="tabVideoRuns" class="tab-btn" onclick="showDashboardTab('video')">Video</button>
+                        </div>
+
+                        <div id="tabPanelImage" class="tab-panel">
+                            <div id="dashboardEmptyImage" class="empty-state">No image predictions yet.</div>
+                            <div id="dashboardImageRuns" class="runs-grid"></div>
+                        </div>
+
+                        <div id="tabPanelVideo" class="tab-panel" style="display:none;">
+                            <div id="dashboardEmptyVideo" class="empty-state">No video predictions yet.</div>
+                            <div id="dashboardVideoRuns" class="runs-grid"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

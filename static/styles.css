@@ -96,6 +96,93 @@ body{
     margin-top: 16px;
 }
 
+.admin-layout {
+    display: flex;
+    min-height: 100vh;
+    background: transparent;
+}
+
+.sidebar {
+    width: 240px;
+    background: #1e293b;
+    color: #e2e8f0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    overflow-y: auto;
+    padding: 22px 16px;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    z-index: 20;
+}
+
+.sidebar h2 {
+    margin-top: 0;
+    margin-bottom: 14px;
+    color: #f8fafc;
+    font-size: 18px;
+}
+
+.sidebar nav {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sidebar nav a {
+    display: block;
+    color: #cbd5e1;
+    text-decoration: none;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-weight: 600;
+    border: 1px solid transparent;
+}
+
+.sidebar nav a:hover,
+.sidebar nav a.active {
+    background: #2563eb;
+    color: #fff;
+    border-color: rgba(255,255,255,0.16);
+}
+
+.sidebar .logout-btn {
+    margin-top: 26px;
+    padding: 10px 12px;
+    width: 100%;
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+    font-weight: 700;
+}
+
+.sidebar .logout-btn:hover {
+    background: #b91c1c;
+}
+
+.main-content {
+    flex: 1;
+    margin-left: 240px;
+    padding: 24px 24px 36px;
+    min-height: 100vh;
+}
+
+@media (max-width: 960px) {
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+        border-right: none;
+    }
+    .main-content {
+        margin-left: 0;
+        padding: 16px;
+    }
+}
+
 @media (min-width: 980px){
     .main-grid{
         grid-template-columns: 0.95fr 1.05fr;
