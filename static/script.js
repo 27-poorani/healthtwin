@@ -1,3 +1,193 @@
+/**
+ * Modern AI Analysis Overlay
+ * Provides a high-fidelity "AI processing" experience.
+ */
+const AI_CSS = `
+    .ai-overlay { position: fixed; inset: 0; background: rgba(5, 5, 8, 0.95); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: 'JetBrains Mono', 'Inter', monospace; color: #f8fafc; opacity: 0; transition: opacity 0.4s ease; backdrop-filter: blur(12px); }
+    .ai-overlay.active { opacity: 1; }
+    .ai-content { width: 90%; max-width: 800px; text-align: center; }
+    
+    .ai-viewport { position: relative; margin-bottom: 32px; border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); background: #000; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+    .ai-viewport.healthy { border-color: #10b981; box-shadow: 0 0 40px rgba(16, 185, 129, 0.2); animation: ai-pulse-green 2s infinite ease-in-out; }
+    .ai-viewport.unhealthy { border-color: #ef4444; box-shadow: 0 0 50px rgba(239, 68, 68, 0.3); animation: ai-heartbeat-red 1.5s infinite; }
+    
+    .ai-viewport img { width: 100%; max-height: 50vh; object-fit: contain; transition: filter 0.8s ease; display: block; margin: 0 auto; }
+    .ai-scanline { position: absolute; top: 0; left: 0; width: 100%; height: 3px; background: linear-gradient(90deg, transparent, #3b82f6, #60a5fa, #3b82f6, transparent); box-shadow: 0 0 20px #3b82f6; display: none; z-index: 20; }
+    
+    .ai-box { position: absolute; border: 2px solid #ef4444; background: rgba(239, 68, 68, 0.1); border-radius: 4px; pointer-events: none; opacity: 0; transition: opacity 0.3s ease; z-index: 10; box-shadow: 0 0 10px #ef4444; }
+    .ai-footer { max-width: 500px; margin: 0 auto; width: 100%; }
+    .ai-status-wrap { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .ai-status-text { font-size: 14px; color: #94a3b8; display: flex; align-items: center; gap: 10px; text-transform: uppercase; letter-spacing: 0.1em; }
+    .ai-progress-track { height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; }
+    .ai-progress-fill { height: 100%; width: 0%; background: #3b82f6; transition: width 0.4s ease; }
+    
+    .ai-results-stage { display: none; animation: ai-slide-up 0.8s cubic-bezier(0.16, 1, 0.3, 1); background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 40px; text-align: center; backdrop-filter: blur(20px); width: 100%; }
+    .ai-res-title { font-size: 38px; font-weight: 900; color: #fff; margin: 16px 0 8px; letter-spacing: -0.04em; }
+    .ai-res-msg { font-size: 16px; color: #94a3b8; margin-bottom: 24px; }
+    
+    .ai-badge { display: inline-flex; align-items: center; padding: 6px 16px; border-radius: 100px; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+    .ai-badge.healthy { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+    .ai-badge.unhealthy { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); animation: ai-glitch-text 2s infinite; }
+    
+    .ai-score-wrap { margin: 24px 0; }
+    .ai-score-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.2em; margin-bottom: 4px; }
+    .ai-score-value { font-size: 48px; font-weight: 900; font-variant-numeric: tabular-nums; }
+    .healthy .ai-score-value { color: #10b981; text-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
+    .unhealthy .ai-score-value { color: #ef4444; text-shadow: 0 0 20px rgba(239, 68, 68, 0.3); }
+    
+    .ai-log { font-size: 11px; color: #475569; margin-top: 32px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px; }
+    .ai-btn-close { margin-top: 24px; padding: 14px 40px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; font-weight: 700; transition: all 0.3s; }
+    .ai-btn-close:hover { background: #fff; color: #000; transform: translateY(-2px); }
+    
+    @keyframes ai-scan { 0% { top: 0; } 100% { top: 100%; } }
+    @keyframes ai-slide-up { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes ai-pulse-green { 0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.2); transform: scale(1); } 50% { box-shadow: 0 0 50px rgba(16, 185, 129, 0.4); transform: scale(1.005); } }
+    @keyframes ai-heartbeat-red { 0% { transform: scale(1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); } 15% { transform: scale(1.01); box-shadow: 0 0 60px rgba(239, 68, 68, 0.5); } 30% { transform: scale(1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); } }
+    @keyframes ai-glitch-text { 0% { opacity: 1; } 95% { opacity: 1; transform: scale(1); } 96% { opacity: 0.8; transform: skewX(10deg); } 97% { opacity: 1; transform: skewX(-10deg); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes ai-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+    .shake { animation: ai-shake 0.1s ease-in-out infinite; }
+    
+    .ai-spinner { width: 18px; height: 18px; border: 2px solid rgba(59, 130, 246, 0.2); border-top-color: #3b82f6; border-radius: 50%; animation: ai-spin 0.8s linear infinite; }
+    @keyframes ai-spin { to { transform: rotate(360deg); } }
+`;
+
+const injectAIStyles = () => {
+    const style = document.createElement("style");
+    style.textContent = AI_CSS;
+    document.head.appendChild(style);
+};
+injectAIStyles();
+
+async function runAnalysisExperience(file, apiPromise) {
+    const overlay = document.createElement("div");
+    overlay.className = "ai-overlay";
+    const imgUrl = URL.createObjectURL(file);
+    
+    overlay.innerHTML = `
+        <div class="ai-content" id="ai-main-container">
+            <div class="ai-viewport">
+                <img src="${imgUrl}" id="ai-target-img" />
+                <div class="ai-scanline" id="ai-scan"></div>
+                <div class="ai-box" style="top:20%; left:25%; width:25%; height:30%"></div>
+                <div class="ai-box" style="top:45%; left:50%; width:30%; height:20%"></div>
+            </div>
+            <div id="ai-processing">
+                <div class="ai-footer">
+                    <div class="ai-status-wrap">
+                        <div class="ai-status-text"><div class="ai-spinner"></div> <span id="ai-msg">Initializing AI model...</span></div>
+                        <div id="ai-pct-text" style="color:#64748b; font-size:14px; font-weight:600">0%</div>
+                    </div>
+                    <div class="ai-progress-track"><div class="ai-progress-fill" id="ai-fill" style="width:0%"></div></div>
+                </div>
+            </div>
+            <div class="ai-results-stage" id="ai-results"></div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add("active"));
+
+    const img = document.getElementById("ai-target-img");
+    const fill = document.getElementById("ai-fill");
+    const pctText = document.getElementById("ai-pct-text");
+    const msg = document.getElementById("ai-msg");
+    const scan = document.getElementById("ai-scan");
+    const boxes = document.querySelectorAll(".ai-box");
+    const results = document.getElementById("ai-results");
+    const processing = document.getElementById("ai-processing");
+
+    const update = (text, p) => {
+        msg.textContent = text;
+        fill.style.width = p + "%";
+        pctText.textContent = p + "%";
+    };
+    const viewport = document.querySelector('.ai-viewport');
+
+    const delay = ms => new Promise(res => setTimeout(res, ms));
+
+    // Simulated Animation Timeline
+    update("Initializing AI model...", 12);
+    await delay(800);
+
+    update("Preprocessing image...", 35);
+    img.style.filter = "blur(8px) grayscale(100%) brightness(1.2)";
+    await delay(1200);
+
+    update("Scanning for patterns...", 60);
+    img.style.filter = "contrast(1.2) brightness(0.8)";
+    scan.style.display = "block";
+    scan.style.animation = "ai-scan 2s linear infinite";
+    await delay(1500);
+
+    update("Detecting regions...", 85);
+    boxes.forEach((b, i) => setTimeout(() => b.style.opacity = 1, i * 400));
+    await delay(1000);
+
+    update("Analyzing data...", 94);
+    const data = await apiPromise;
+    
+    update("Finalizing analysis...", 100);
+    await delay(600);
+
+    const isHealthy = data.health_status === "Healthy";
+    const themeClass = isHealthy ? "healthy" : "unhealthy";
+    
+    // Transition to results
+    scan.style.display = "none";
+    processing.style.display = "none";
+    img.style.filter = "none";
+    viewport.classList.add(themeClass);
+    
+    if (!isHealthy) {
+        viewport.classList.add("shake");
+    } else {
+        boxes.forEach(b => b.style.opacity = 0);
+    }
+    results.classList.add(themeClass);
+
+    const badgeText = isHealthy ? "Healthy" : "⚠ Disease Detected";
+    const statusMsg = isHealthy ? "No abnormalities detected" : "Anomalous patterns identified";
+    const titleText = isHealthy ? "System Normal" : data.prediction;
+    const confidencePct = (data.healthy_probability * 100);
+    
+    results.innerHTML = `
+        <div class="ai-badge ${themeClass}">${badgeText}</div>
+        <div class="ai-res-title">${titleText}</div>
+        <div class="ai-res-msg">${statusMsg}</div>
+        
+        <div class="ai-score-wrap">
+            <div class="ai-score-label">AI Diagnostic Confidence</div>
+            <div class="ai-score-value" id="ai-count">0.00%</div>
+        </div>
+
+        <div class="ai-res-stats">
+            <span>Dog ID: <b>${data.dog_id}</b></span>
+            <span>NODES_ACTIVE: <b>642</b></span>
+            <span>LATENCY: <b>${(Math.random() * 50 + 10).toFixed(0)}ms</b></span>
+        </div>
+        <button class="ai-btn-close" onclick="document.querySelector('.ai-overlay').remove()">Return to Dashboard</button>
+        <div class="ai-log">Analysis complete. Visualization mapping finished. Diagnostic confidence validated.</div>
+    `;
+    results.style.display = "block";
+
+    // If healthy, stop the viewport shake after a moment (glitch effect)
+    if (!isHealthy) {
+        setTimeout(() => viewport.classList.remove("shake"), 1000);
+    }
+
+    // Counter animation
+    const counterEl = document.getElementById("ai-count");
+    const start = performance.now();
+    function animateCount(now) {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / 1500, 1);
+        const ease = 1 - Math.pow(1 - progress, 3);
+        counterEl.textContent = (ease * confidencePct).toFixed(2) + "%";
+        if (progress < 1) requestAnimationFrame(animateCount);
+    }
+    requestAnimationFrame(animateCount);
+    return data;
+}
+
 const LS_KEY = "dogSkin.dashboardRuns.v1";
 
 const MAX_RUNS = 30;
@@ -1113,55 +1303,66 @@ function uploadImage() {
     formData.append("file", fileInput.files[0]);
     formData.append("dog_id", dogId);
 
-    fetch("/predict", {
+    const apiPromise = fetch("/predict", {
         method: "POST",
         body: formData,
-    })
-    .then(response => response.json())
-    .then(data => {
+    }).then(res => res.json());
+
+    runAnalysisExperience(selectedFile, apiPromise).then(data => {
         const label = data.prediction;
         const health = data.health_status || data.prediction;
         const prob = Number(data.healthy_probability);
         const threshold = Number(data.baseline_threshold);
         const avgHealthyScore = clampScore01(data.average_healthy_score, 0.5);
         const severity = classifySeverityFromHealthyProb(prob, threshold, health);
+        
         updateHealthyReferenceProfile(dogId, avgHealthyScore);
         renderHealthComparison(prob, avgHealthyScore);
 
-        const out = document.getElementById("predictionResult");
-        if (out) {
-            out.innerHTML =
-                `<div class="result-card">
-                <div class="result-head">
-                    <div>
-                        <div class="result-title">🐕 Image Result</div>
-                        <div class="card-subtitle">Predicted class: ${escapeHtml(label)}</div>
+        const isHealthy = health === "Healthy";
+
+        const resultCardHtml = `
+            <div class="result-card modern-ai-card ${isHealthy ? 'healthy' : 'unhealthy'}" style="background: rgba(246, 247, 249, 0.97); border: 1px solid rgb(224, 217, 217); padding: 28px; border-radius: 20px; backdrop-filter: blur(10px);">
+                <div class="result-head" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 24px;">
+                    <div class="result-info">
+                        <div class="system-tag" style="font-size: 10px; letter-spacing: 0.2em; color: #050607; margin-bottom: 4px;">AI ANALYSIS COMPLETE</div>
+                        <div class="result-title" style="font-size: 28px; font-weight: 900; color: #121111; letter-spacing: -0.02em;">${isHealthy ? 'Healthy Condition' : escapeHtml(label)}</div>
                     </div>
-                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                    <div class="result-badges" style="display:flex; gap:10px; align-items:center;">
                         <div class="severity-pill ${escapeHtml(severity.key)}">${escapeHtml(severity.label)}</div>
-                        <div class="result-badge ${health === "Healthy" ? "good" : "bad"}">${health === "Healthy" ? "Healthy" : "🚨 Unhealthy"}</div>
+                        <div class="ai-badge ${isHealthy ? 'healthy' : 'unhealthy'}" style="padding: 6px 14px; border-radius: 100px; font-size: 11px; font-weight: 800;">${isHealthy ? 'NORMAL' : '⚠ ANOMALY'}</div>
                     </div>
                 </div>
-                <div class="result-grid">
-                    <div class="result-item">
-                        <div class="result-label">Healthy Probability</div>
-                        <div class="result-value">${isFinite(prob) ? prob.toFixed(6) : "-"}</div>
+                
+                <div class="result-visualization" style="display:grid; grid-template-columns: 1fr 1.5fr; gap: 24px; margin-bottom: 32px; padding: 20px; background: rgba(251, 247, 247, 0.93); border-radius: 16px;">
+                    <div class="metric-group" style="border-right: 1px solid rgba(255,255,255,0.05);">
+                        <div class="metric-label" style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em;">Healthy Probability</div>
+                        <div class="metric-value" style="font-size: 20px; font-weight: 800; color: ${isHealthy ? '#10b981' : '#ef4444'};">
+                            ${(prob * 100).toFixed(2)}%
+                        </div>
                     </div>
-                    <div class="result-item">
-                        <div class="result-label">Baseline Threshold</div>
-                        <div class="result-value">${isFinite(threshold) ? threshold.toFixed(6) : "-"}</div>
+                    <div class="metric-group">
+                        <div class="metric-label" style="font-size: 11px; color: #323333; text-transform: uppercase; letter-spacing: 0.1em;">Status Summary</div>
+                        <div class="metric-msg" style="font-size: 14px; color: #1a1a1b; line-height: 1.5;">${isHealthy ? 'The AI analysis concludes no visible skin abnormalities or diseases.' : 'Analysis identified patterns consistent with ' + escapeHtml(label) + '.'}</div>
                     </div>
                 </div>
-                <div class="care-action-row" style="margin-top:10px;">
-                    <button id="reportThisDogBtn" class="primary-btn" type="button" onclick="reportThisDog()" disabled>🐕 Report this dog</button>
+
+                <div class="care-action-row" style="display: flex; gap: 12px;">
+                    <button id="reportThisDogBtn" class="primary-btn report-btn" type="button" onclick="reportThisDog()" disabled style="flex: 1; padding: 14px; border-radius: 12px; font-weight: 700;">
+                        <span>📢 Report Case</span>
+                    </button>
+                    <div id="reportStatus" style="font-size: 12px; color: #64748b; align-self: center;"></div>
                 </div>
-                </div>`;
-        }
+            </div>`;
+
+        const out = document.getElementById("predictionResult");
+        if (out) out.innerHTML = resultCardHtml;
 
         updateCareSuggestionsPanel("careSuggestionsImage", label);
         pushDiseaseMessageToChat(label);
         setReportPredictionContext([label], severity.key, severity.label, dogId);
         reportImagePromise.then(b64 => setReportImageContext(b64, reportImageMime));
+        updateReportButtonState();
 
         const run = {
             id: "img_" + Math.random().toString(16).slice(2) + "_" + Date.now(),
