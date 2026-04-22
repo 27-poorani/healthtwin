@@ -58,6 +58,19 @@ const injectAIStyles = () => {
 };
 injectAIStyles();
 
+/**
+ * Initialize EmailJS for direct admin notifications.
+ */
+const initEmailJS = () => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js";
+    script.onload = () => {
+        emailjs.init("w0b09IH6ZoJ4-Sey7"); // Replace with your actual EmailJS Public Key
+    };
+    document.head.appendChild(script);
+};
+initEmailJS();
+
 async function runAnalysisExperience(file, apiPromise) {
     const overlay = document.createElement("div");
     overlay.className = "ai-overlay";
@@ -662,6 +675,10 @@ async function reportThisDog() {
     try {
         if (statusEl) statusEl.textContent = "Requesting location permission…";
         const location = await getCurrentLocation();
+
+        const locName = await reverseGeocodeName(location.latitude, location.longitude);
+        const locationText = locName || `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
+
         if (statusEl) statusEl.textContent = "Submitting report…";
 
         const payload = {
@@ -684,7 +701,22 @@ async function reportThisDog() {
             throw new Error(data.error || "Failed to submit report.");
         }
 
-        if (statusEl) statusEl.textContent = "Thanks! Report submitted. See it in Reports History / Map.";
+        // EmailJS: Direct Notification to Admin
+        if (window.emailjs) {
+            const templateParams = {
+                disease_name: (payload.disease && payload.disease.length > 0) ? payload.disease.join(", ") : "Not specified",
+                condition: payload.severity === "Severe" ? "Urgent / Critical" : "Attention Required",
+                severity: payload.severity,
+                location: locationText,
+                timestamp: new Date().toLocaleString(),
+                dog_image: payload.image_base64 || "",
+                notes: payload.notes || "No additional notes"
+            };
+            emailjs.send("service_jqvb0e7", "template_f4eqogg", templateParams)
+                .catch(err => console.error("EmailJS notification failed:", err));
+        }
+
+        if (statusEl) statusEl.textContent = "Thanks! Report submitted and admin notified.";
         alert("Reported!");
         if (notesInput) notesInput.value = "";
         renderReportsHistory();
