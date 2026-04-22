@@ -10,8 +10,8 @@ const AI_CSS = `
     .ai-viewport { position: relative; margin-bottom: 32px; border-radius: 20px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); background: #000; transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
     .ai-viewport.healthy { border-color: #10b981; box-shadow: 0 0 40px rgba(16, 185, 129, 0.2); animation: ai-pulse-green 2s infinite ease-in-out; }
     .ai-viewport.unhealthy { border-color: #ef4444; box-shadow: 0 0 50px rgba(239, 68, 68, 0.3); animation: ai-heartbeat-red 1.5s infinite; }
-    
-    .ai-viewport img { width: 100%; max-height: 50vh; object-fit: contain; transition: filter 0.8s ease; display: block; margin: 0 auto; }
+
+    .ai-viewport img, .ai-viewport video { width: 100%; max-height: 50vh; object-fit: contain; transition: filter 0.8s ease; display: block; margin: 0 auto; }
     .ai-scanline { position: absolute; top: 0; left: 0; width: 100%; height: 3px; background: linear-gradient(90deg, transparent, #3b82f6, #60a5fa, #3b82f6, transparent); box-shadow: 0 0 20px #3b82f6; display: none; z-index: 20; }
     
     .ai-box { position: absolute; border: 2px solid #ef4444; background: rgba(239, 68, 68, 0.1); border-radius: 4px; pointer-events: none; opacity: 0; transition: opacity 0.3s ease; z-index: 10; box-shadow: 0 0 10px #ef4444; }
@@ -62,11 +62,12 @@ async function runAnalysisExperience(file, apiPromise) {
     const overlay = document.createElement("div");
     overlay.className = "ai-overlay";
     const imgUrl = URL.createObjectURL(file);
+    const isVideo = file.type.startsWith("video/");
     
     overlay.innerHTML = `
         <div class="ai-content" id="ai-main-container">
             <div class="ai-viewport">
-                <img src="${imgUrl}" id="ai-target-img" />
+                ${isVideo ? `<video src="${imgUrl}" id="ai-target-img" autoplay muted loop></video>` : `<img src="${imgUrl}" id="ai-target-img" />`}
                 <div class="ai-scanline" id="ai-scan"></div>
                 <div class="ai-box" style="top:20%; left:25%; width:25%; height:30%"></div>
                 <div class="ai-box" style="top:45%; left:50%; width:30%; height:20%"></div>
@@ -1392,16 +1393,28 @@ function uploadVideo() {
     const dogIdInput = document.getElementById("dogIdInput");
     const dogId = dogIdInput && dogIdInput.value ? dogIdInput.value.trim() : "default";
 
+    const selectedFile = videoInput.files[0];
     const formData = new FormData();
-    formData.append("file", videoInput.files[0]);
+    formData.append("file", selectedFile);
     formData.append("dog_id", dogId);
 
-    fetch("/predict_video", {
+    const apiPromise = fetch("/predict_video", {
         method: "POST",
         body: formData,
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(async response => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Server error");
+        
+        const results = data.results || [];
+        const stats = computeVideoOverall(results);
+        const scoreValues = results.map(r => Number(r.healthy_probability)).filter(v => isFinite(v));
+        const avgProb = scoreValues.length ? (scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length) : 0;
+        
+        return { ...data, health_status: stats.overall, prediction: stats.overall === "Healthy" ? "Healthy" : "Anomalous Patterns Detected", healthy_probability: avgProb };
+    });
+
+    runAnalysisExperience(selectedFile, apiPromise).then(data => {
         const results = data.results || [];
         const unhealthyThumbs = data.unhealthy_thumbnails || [];
         const threshold = Number(data.baseline_threshold);
