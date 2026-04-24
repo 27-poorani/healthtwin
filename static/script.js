@@ -177,9 +177,11 @@ async function runAnalysisExperience(file, apiPromise) {
             <span>Dog ID: <b>${data.dog_id}</b></span>
             <span>NODES_ACTIVE: <b>642</b></span>
             <span>LATENCY: <b>${(Math.random() * 50 + 10).toFixed(0)}ms</b></span>
+            <span>Analyzed at: <b>${new Date().toLocaleTimeString()}</b></span>
         </div>
         <button class="ai-btn-close" onclick="document.querySelector('.ai-overlay').remove()">Return to Dashboard</button>
         <div class="ai-log">Analysis complete. Visualization mapping finished. Diagnostic confidence validated.</div>
+        <div class="ai-log">Analysis complete. Please consult the care suggestions below for next steps.</div>
     `;
     results.style.display = "block";
 
@@ -269,12 +271,15 @@ function updateHealthyReferenceProfile(dogId, averageHealthyScore) {
     const score = clampScore01(averageHealthyScore, 0.5);
     const pct = Math.round(score * 100);
     const isStable = score >= 0.5;
+    const isStable = score >= 0.7;
 
     if (fillEl) fillEl.style.width = `${pct}%`;
     if (valueEl) valueEl.textContent = score.toFixed(2);
+    if (valueEl) valueEl.textContent = `${pct}%`;
     if (progressEl) progressEl.setAttribute("aria-valuenow", score.toFixed(2));
     if (statusEl) {
         statusEl.textContent = isStable ? "Stable" : "Low Stability";
+        statusEl.textContent = isStable ? "Health Profile Established" : "Initial Assessment";
         statusEl.classList.toggle("stable", isStable);
         statusEl.classList.toggle("low", !isStable);
     }
@@ -1016,7 +1021,7 @@ function _geoCacheSave(cache) {
 function _roundCoord(v) {
     const n = Number(v);
     if (!isFinite(n)) return null;
-    return Math.round(n * 1000) / 1000; // ~110m precision; good for caching + privacy
+    return Math.round(n * 1000000) / 1000000; // ~10cm precision; improved accuracy for display
 }
 
 async function reverseGeocodeName(lat, lng) {
@@ -1032,7 +1037,7 @@ async function reverseGeocodeName(lat, lng) {
 
     const p = (async () => {
         try {
-            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(latR)}&lon=${encodeURIComponent(lngR)}`;
+            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(latR)}&lon=${encodeURIComponent(lngR)}&zoom=18&addressdetails=1`;
             const resp = await fetch(url, {
                 headers: {
                     "Accept": "application/json",
@@ -1040,7 +1045,7 @@ async function reverseGeocodeName(lat, lng) {
             });
             if (!resp.ok) return null;
             const data = await resp.json();
-            const name = (data && (data.name || data.display_name)) ? String(data.name || data.display_name) : null;
+            const name = (data && (data.display_name || data.name)) ? String(data.display_name || data.name) : null;
             if (name) {
                 cache[key] = name;
                 // Keep cache bounded.
@@ -1186,6 +1191,8 @@ function createRunCard(run) {
                     <div class="metric">
                         <div class="metric-label">Healthy probability</div>
                         <div class="metric-value">${Number(run.healthy_probability).toFixed(6)}</div>
+                        <div class="metric-label">AI Confidence</div>
+                        <div class="metric-value">${(Number(run.healthy_probability) * 100).toFixed(1)}%</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">Baseline threshold</div>
