@@ -177,11 +177,9 @@ async function runAnalysisExperience(file, apiPromise) {
             <span>Dog ID: <b>${data.dog_id}</b></span>
             <span>NODES_ACTIVE: <b>642</b></span>
             <span>LATENCY: <b>${(Math.random() * 50 + 10).toFixed(0)}ms</b></span>
-            <span>Analyzed at: <b>${new Date().toLocaleTimeString()}</b></span>
         </div>
         <button class="ai-btn-close" onclick="document.querySelector('.ai-overlay').remove()">Return to Dashboard</button>
         <div class="ai-log">Analysis complete. Visualization mapping finished. Diagnostic confidence validated.</div>
-        <div class="ai-log">Analysis complete. Please consult the care suggestions below for next steps.</div>
     `;
     results.style.display = "block";
 
@@ -271,15 +269,12 @@ function updateHealthyReferenceProfile(dogId, averageHealthyScore) {
     const score = clampScore01(averageHealthyScore, 0.5);
     const pct = Math.round(score * 100);
     const isStable = score >= 0.5;
-    const isStable = score >= 0.7;
 
     if (fillEl) fillEl.style.width = `${pct}%`;
     if (valueEl) valueEl.textContent = score.toFixed(2);
-    if (valueEl) valueEl.textContent = `${pct}%`;
     if (progressEl) progressEl.setAttribute("aria-valuenow", score.toFixed(2));
     if (statusEl) {
         statusEl.textContent = isStable ? "Stable" : "Low Stability";
-        statusEl.textContent = isStable ? "Health Profile Established" : "Initial Assessment";
         statusEl.classList.toggle("stable", isStable);
         statusEl.classList.toggle("low", !isStable);
     }
@@ -1191,8 +1186,6 @@ function createRunCard(run) {
                     <div class="metric">
                         <div class="metric-label">Healthy probability</div>
                         <div class="metric-value">${Number(run.healthy_probability).toFixed(6)}</div>
-                        <div class="metric-label">AI Confidence</div>
-                        <div class="metric-value">${(Number(run.healthy_probability) * 100).toFixed(1)}%</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">Baseline threshold</div>
