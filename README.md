@@ -20,21 +20,4 @@ This project aims to detect skin diseases in stray dogs using computer vision an
 - NumPy & Pandas
 - Matplotlib & Seaborn
 
-## Installation
-1. Clone the repository:
-   ```sh
-   git clone https://github.com/guruprashanth2004/stray-dog-skin-disease-detection.git
-   ```
 
-## Results
-- Model performance is evaluated using various metrics.
-- Visualizations of sample predictions are provided.
-
-## Contributions
-Contributions are welcome! Feel free to submit issues or pull requests.
-
-## License
-This project is licensed under the MIT License.
-
-## Contact
-For any inquiries, reach out at [guruprashanthmedasani@gmail.com](mailto:guruprashanthmedasani@gmail.com).
